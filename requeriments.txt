@@ -5,5 +5,3 @@ psycopg2-binary
 pyjwt
 pwdlib
 python-dotenv
-
-python -m uvicorn main:app --reload
