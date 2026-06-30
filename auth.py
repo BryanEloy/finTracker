@@ -1,11 +1,12 @@
 from pwdlib import PasswordHash
+from pwdlib.hashers.bcrypt import BcryptHasher
 import jwt
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-pwd = PasswordHash.recommended()
+pwd = PasswordHash((BcryptHasher(),))
 
 SECRET = os.getenv("JWT_SECRET")
 
