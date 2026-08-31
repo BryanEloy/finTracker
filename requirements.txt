@@ -6,3 +6,5 @@ pyjwt
 pwdlib
 python-dotenv
 bcrypt
+email-validator
+python-multipart
