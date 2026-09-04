@@ -41,7 +41,10 @@ class PasswordActualIncorrectoError(Exception):
 # FUNCIONES AUXILIARES
 # =========================================================
 
-def normalizar_correo(correo: str) -> str:
+def normalizar_correo(
+    correo: str,
+) -> str:
+
     return correo.strip().lower()
 
 
@@ -51,22 +54,24 @@ def normalizar_correo(correo: str) -> str:
 
 def registrar_usuario(
     db: Session,
-    datos: UsuarioRegistroEntrada
+    datos: UsuarioRegistroEntrada,
 ) -> Usuario:
 
     correo = normalizar_correo(
         str(datos.correo_usuario)
     )
 
-    usuario_existente = repository.obtener_por_correo(
-        db,
-        correo
+    usuario_existente = (
+        repository.obtener_por_correo(
+            db,
+            correo,
+        )
     )
 
     if usuario_existente is not None:
         raise CorreoYaRegistradoError()
 
-    password_hash = hash_password(
+    password_hash_usuario = hash_password(
         datos.password
     )
 
@@ -74,7 +79,7 @@ def registrar_usuario(
         db,
         nombre_usuario=datos.nombre_usuario.strip(),
         correo_usuario=correo,
-        password_hash=password_hash,
+        password_hash_usuario=password_hash_usuario,
     )
 
     return usuario
@@ -87,7 +92,7 @@ def registrar_usuario(
 def autenticar_usuario(
     db: Session,
     correo_usuario: str,
-    password: str
+    password: str,
 ) -> TokenSalida:
 
     correo = normalizar_correo(
@@ -96,25 +101,22 @@ def autenticar_usuario(
 
     usuario = repository.obtener_por_correo(
         db,
-        correo
+        correo,
     )
 
     if usuario is None:
         raise CredencialesIncorrectasError()
 
-    if not verify_password(
+    password_correcto = verify_password(
         password,
-        usuario.password_hash
-    ):
+        usuario.password_hash_usuario,
+    )
+
+    if not password_correcto:
         raise CredencialesIncorrectasError()
 
-    if not usuario.es_activo:
+    if not usuario.es_activo_usuario:
         raise UsuarioDesactivadoError()
-
-    repository.actualizar_ultimo_acceso(
-        db,
-        usuario
-    )
 
     access_token = create_access_token(
         usuario.id_usuario
@@ -128,7 +130,7 @@ def autenticar_usuario(
         ),
         usuario=UsuarioToken.model_validate(
             usuario
-        )
+        ),
     )
 
 
@@ -139,21 +141,22 @@ def autenticar_usuario(
 def actualizar_perfil(
     db: Session,
     usuario: Usuario,
-    datos: UsuarioActualizarEntrada
+    datos: UsuarioActualizarEntrada,
 ) -> Usuario:
+
+    cambios = datos.model_dump(
+        exclude_unset=True
+    )
+
+    if "nombre_usuario" in cambios:
+        cambios["nombre_usuario"] = (
+            cambios["nombre_usuario"].strip()
+        )
 
     return repository.actualizar(
         db,
         usuario,
-        nombre_usuario=(
-            datos.nombre_usuario.strip()
-            if datos.nombre_usuario is not None
-            else None
-        ),
-        avatar_codigo=datos.avatar_codigo,
-        notificaciones_presupuesto=(
-            datos.notificaciones_presupuesto
-        ),
+        cambios,
     )
 
 
@@ -164,12 +167,12 @@ def actualizar_perfil(
 def cambiar_password(
     db: Session,
     usuario: Usuario,
-    datos: CambiarPasswordEntrada
+    datos: CambiarPasswordEntrada,
 ) -> None:
 
     password_correcto = verify_password(
         datos.password_actual,
-        usuario.password_hash
+        usuario.password_hash_usuario,
     )
 
     if not password_correcto:
@@ -182,7 +185,7 @@ def cambiar_password(
     repository.actualizar_password(
         db,
         usuario,
-        nuevo_password_hash
+        nuevo_password_hash,
     )
 
 
@@ -192,10 +195,10 @@ def cambiar_password(
 
 def desactivar_usuario(
     db: Session,
-    usuario: Usuario
+    usuario: Usuario,
 ) -> None:
 
     repository.desactivar(
         db,
-        usuario
+        usuario,
     )

@@ -9,8 +9,9 @@ from app.modules.usuarios.model import Usuario
 
 def obtener_por_id(
     db: Session,
-    id_usuario: UUID
+    id_usuario: UUID,
 ) -> Usuario | None:
+
     return db.scalar(
         select(Usuario).where(
             Usuario.id_usuario == id_usuario
@@ -20,8 +21,9 @@ def obtener_por_id(
 
 def obtener_por_correo(
     db: Session,
-    correo_usuario: str
+    correo_usuario: str,
 ) -> Usuario | None:
+
     return db.scalar(
         select(Usuario).where(
             Usuario.correo_usuario == correo_usuario
@@ -34,14 +36,13 @@ def crear(
     *,
     nombre_usuario: str,
     correo_usuario: str,
-    password_hash: str,
-    avatar_codigo: str = "default_01",
+    password_hash_usuario: str,
 ) -> Usuario:
+
     usuario = Usuario(
         nombre_usuario=nombre_usuario,
         correo_usuario=correo_usuario,
-        password_hash=password_hash,
-        avatar_codigo=avatar_codigo,
+        password_hash_usuario=password_hash_usuario,
     )
 
     db.add(usuario)
@@ -54,20 +55,14 @@ def crear(
 def actualizar(
     db: Session,
     usuario: Usuario,
-    *,
-    nombre_usuario: str | None = None,
-    avatar_codigo: str | None = None,
-    notificaciones_presupuesto: bool | None = None,
+    cambios: dict,
 ) -> Usuario:
-    if nombre_usuario is not None:
-        usuario.nombre_usuario = nombre_usuario
 
-    if avatar_codigo is not None:
-        usuario.avatar_codigo = avatar_codigo
-
-    if notificaciones_presupuesto is not None:
-        usuario.notificaciones_presupuesto = (
-            notificaciones_presupuesto
+    for campo, valor in cambios.items():
+        setattr(
+            usuario,
+            campo,
+            valor,
         )
 
     db.commit()
@@ -79,30 +74,25 @@ def actualizar(
 def actualizar_password(
     db: Session,
     usuario: Usuario,
-    password_hash: str
+    password_hash_usuario: str,
 ) -> None:
-    usuario.password_hash = password_hash
+
+    usuario.password_hash_usuario = (
+        password_hash_usuario
+    )
 
     db.commit()
-
-
-def actualizar_ultimo_acceso(
-    db: Session,
-    usuario: Usuario
-) -> Usuario:
-    usuario.ultimo_acceso_usuario = datetime.now(timezone.utc)
-
-    db.commit()
-    db.refresh(usuario)
-
-    return usuario
 
 
 def desactivar(
     db: Session,
-    usuario: Usuario
+    usuario: Usuario,
 ) -> None:
-    usuario.es_activo = False
-    usuario.fecha_desactivacion_usuario = datetime.now(timezone.utc)
+
+    usuario.es_activo_usuario = False
+
+    usuario.fecha_desactivacion_usuario = (
+        datetime.now(timezone.utc)
+    )
 
     db.commit()

@@ -104,8 +104,8 @@ def cambiar_mi_password(
 # DELETE /api/v1/usuarios/me
 # =========================================================
 
-@router.delete(
-    "/me",
+@router.patch(
+    "/me/estado",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def desactivar_mi_cuenta(

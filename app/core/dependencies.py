@@ -54,7 +54,7 @@ def get_current_user(
     if usuario is None:
         raise credentials_exception
 
-    if not usuario.es_activo:
+    if not usuario.es_activo_usuario:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Usuario desactivado",

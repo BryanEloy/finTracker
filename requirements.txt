@@ -2,9 +2,9 @@ fastapi
 uvicorn
 sqlalchemy
 psycopg2-binary
-pyjwt
+PyJWT
 pwdlib
-python-dotenv
 bcrypt
+python-dotenv
 email-validator
 python-multipart
