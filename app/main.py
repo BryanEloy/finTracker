@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from app.modules.usuarios.auth_router import router as auth_router
 from app.modules.usuarios.router import router as usuarios_router
+from app.modules.cuentas.router import router as cuentas_router
 
 
 app = FastAPI(
@@ -17,6 +18,11 @@ app.include_router(
 
 app.include_router(
     usuarios_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    cuentas_router,
     prefix="/api/v1",
 )
 
