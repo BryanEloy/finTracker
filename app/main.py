@@ -4,7 +4,11 @@ from app.modules.usuarios.auth_router import router as auth_router
 from app.modules.usuarios.router import router as usuarios_router
 from app.modules.cuentas.router import router as cuentas_router
 from app.modules.categorias.router import router as categorias_router
-
+from app.modules.transacciones.router import (
+    router as transacciones_router,
+)
+from app.modules.metas.router import router as metas_router
+from app.modules.presupuestos.router import router as presupuestos_router
 
 app = FastAPI(
     title="FinTrack API",
@@ -29,6 +33,21 @@ app.include_router(
 
 app.include_router(
     categorias_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    transacciones_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    metas_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    presupuestos_router,
     prefix="/api/v1",
 )
 
