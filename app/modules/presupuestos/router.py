@@ -1,300 +1,49 @@
-from typing import Literal
 from uuid import UUID
-
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    Query,
-    status,
-)
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-
 from app.core.dependencies import get_current_user
 from app.db.session import get_db
-
+from app.modules.usuarios.model import Usuario
 from app.modules.presupuestos import service
-from app.modules.presupuestos.model import EstadoPresupuesto
 from app.modules.presupuestos.schemas import (
-    PresupuestoCrearEntrada,
-    PresupuestoCierreEntrada,
-    PresupuestoDetalle,
-    PresupuestoGastosSalida,
-    PresupuestoListaSalida,
+    PresupuestoCrearEntrada, PresupuestoActualizarEntrada, GrupoDistribucionEntrada,
 )
 
+router=APIRouter(tags=["Presupuestos V1.1"])
 
-router = APIRouter(
-    prefix="/presupuestos",
-    tags=["Presupuestos"],
-)
+def manejar(error):
+    raise HTTPException(status_code=error.codigo,detail=error.mensaje) from error
 
+@router.get("/presupuestos")
+def listar(db:Session=Depends(get_db),usuario:Usuario=Depends(get_current_user)):
+    return service.listar(db,usuario.id_usuario)
 
-# ============================================================
-# EP-PRE-01
-# CREAR PRESUPUESTO
-# POST /api/v1/presupuestos
-# ============================================================
+@router.get("/presupuestos/{id_periodo}")
+def obtener(id_periodo:UUID,db:Session=Depends(get_db),usuario:Usuario=Depends(get_current_user)):
+    try: return service.detalle(db,usuario.id_usuario,id_periodo)
+    except service.PresupuestoError as exc: manejar(exc)
 
-@router.post(
-    "",
-    response_model=PresupuestoDetalle,
-    status_code=status.HTTP_201_CREATED,
-)
-def crear_presupuesto(
-    datos: PresupuestoCrearEntrada,
-    db: Session = Depends(get_db),
-    usuario=Depends(get_current_user),
-):
-    try:
-        return service.crear_presupuesto(
-            db=db,
-            usuario_id=usuario.id_usuario,
-            datos=datos,
-        )
+@router.post("/presupuestos",status_code=status.HTTP_201_CREATED)
+def crear(datos:PresupuestoCrearEntrada,db:Session=Depends(get_db),usuario:Usuario=Depends(get_current_user)):
+    try: return service.crear(db,usuario.id_usuario,datos)
+    except service.PresupuestoError as exc: manejar(exc)
 
-    except service.CategoriaNoEncontradaError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="CATEGORIA_NO_ENCONTRADA",
-        )
+@router.patch("/presupuestos/{id_periodo}")
+def editar(id_periodo:UUID,datos:PresupuestoActualizarEntrada,db:Session=Depends(get_db),usuario:Usuario=Depends(get_current_user)):
+    try: return service.editar(db,usuario.id_usuario,id_periodo,datos)
+    except service.PresupuestoError as exc: manejar(exc)
 
-    except service.CategoriaInactivaError:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="CATEGORIA_INACTIVA",
-        )
+@router.put("/presupuestos/{id_periodo}/distribucion")
+def distribuir(id_periodo:UUID,grupos:list[GrupoDistribucionEntrada],db:Session=Depends(get_db),usuario:Usuario=Depends(get_current_user)):
+    try: return service.distribuir(db,usuario.id_usuario,id_periodo,grupos)
+    except service.PresupuestoError as exc: manejar(exc)
 
-    except service.PresupuestoActivoExistenteError:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="PRESUPUESTO_ACTIVO_EXISTENTE",
-        )
+@router.post("/presupuestos/{id_periodo}/finalizar")
+def finalizar(id_periodo:UUID,db:Session=Depends(get_db),usuario:Usuario=Depends(get_current_user)):
+    try: return service.cerrar(db,usuario.id_usuario,id_periodo,"FINALIZADO")
+    except service.PresupuestoError as exc: manejar(exc)
 
-    except service.DistribucionInvalidaError:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="DISTRIBUCION_INVALIDA",
-        )
-
-    except service.DistribucionNoRepresentableError:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="DISTRIBUCION_NO_REPRESENTABLE",
-        )
-
-    except service.DatosInvalidosError:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="DATOS_INVALIDOS",
-        )
-
-
-# ============================================================
-# EP-PRE-02
-# LISTAR PRESUPUESTOS
-# GET /api/v1/presupuestos
-# ============================================================
-
-@router.get(
-    "",
-    response_model=PresupuestoListaSalida,
-    status_code=status.HTTP_200_OK,
-)
-def listar_presupuestos(
-    estado: Literal[
-        "ACTIVO",
-        "FINALIZADO",
-        "CANCELADO",
-        "TODOS",
-    ] = Query(
-        default="ACTIVO",
-    ),
-
-    limite: int = Query(
-        default=20,
-        ge=1,
-        le=100,
-    ),
-
-    offset: int = Query(
-        default=0,
-        ge=0,
-    ),
-
-    db: Session = Depends(get_db),
-    usuario=Depends(get_current_user),
-):
-    estado_db = (
-        None
-        if estado == "TODOS"
-        else EstadoPresupuesto(estado)
-    )
-
-    presupuestos, total = (
-        service.listar_presupuestos(
-            db=db,
-            usuario_id=usuario.id_usuario,
-            estado=estado_db,
-            limite=limite,
-            offset=offset,
-        )
-    )
-
-    return {
-        "presupuestos": presupuestos,
-        "total": total,
-        "limite": limite,
-        "offset": offset,
-    }
-
-
-# ============================================================
-# EP-PRE-03
-# OBTENER DETALLE
-# GET /api/v1/presupuestos/{id_presupuesto}
-# ============================================================
-
-@router.get(
-    "/{id_presupuesto}",
-    response_model=PresupuestoDetalle,
-    status_code=status.HTTP_200_OK,
-)
-def obtener_presupuesto(
-    id_presupuesto: UUID,
-    db: Session = Depends(get_db),
-    usuario=Depends(get_current_user),
-):
-    try:
-        return service.obtener_detalle_presupuesto(
-            db=db,
-            usuario_id=usuario.id_usuario,
-            id_presupuesto=id_presupuesto,
-        )
-
-    except service.PresupuestoNoEncontradoError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="PRESUPUESTO_NO_ENCONTRADO",
-        )
-
-
-# ============================================================
-# EP-PRE-04
-# CERRAR PRESUPUESTO
-# POST /api/v1/presupuestos/{id_presupuesto}/cierre
-# ============================================================
-
-@router.post(
-    "/{id_presupuesto}/cierre",
-    response_model=PresupuestoDetalle,
-    status_code=status.HTTP_200_OK,
-)
-def cerrar_presupuesto(
-    id_presupuesto: UUID,
-    datos: PresupuestoCierreEntrada,
-    db: Session = Depends(get_db),
-    usuario=Depends(get_current_user),
-):
-    try:
-        return service.cerrar_presupuesto(
-            db=db,
-            usuario_id=usuario.id_usuario,
-            id_presupuesto=id_presupuesto,
-            accion=datos.accion,
-        )
-
-    except service.PresupuestoNoEncontradoError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="PRESUPUESTO_NO_ENCONTRADO",
-        )
-
-    except service.PresupuestoNoFinalizableError:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="PRESUPUESTO_NO_FINALIZABLE",
-        )
-
-    except service.PresupuestoCerradoError:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="PRESUPUESTO_CERRADO",
-        )
-
-    except service.DatosInvalidosError:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="DATOS_INVALIDOS",
-        )
-
-
-# ============================================================
-# EP-PRE-05
-# LISTAR GASTOS DEL PRESUPUESTO
-# GET /api/v1/presupuestos/{id_presupuesto}/gastos
-# ============================================================
-
-@router.get(
-    "/{id_presupuesto}/gastos",
-    response_model=PresupuestoGastosSalida,
-    status_code=status.HTTP_200_OK,
-)
-def listar_gastos_presupuesto(
-    id_presupuesto: UUID,
-
-    alcance: Literal[
-        "TODOS",
-        "PRESUPUESTADOS",
-        "NO_PRESUPUESTADOS",
-    ] = Query(
-        default="TODOS",
-    ),
-
-    categoria_id: UUID | None = Query(
-        default=None,
-    ),
-
-    limite: int = Query(
-        default=20,
-        ge=1,
-        le=100,
-    ),
-
-    offset: int = Query(
-        default=0,
-        ge=0,
-    ),
-
-    db: Session = Depends(get_db),
-    usuario=Depends(get_current_user),
-):
-    try:
-        gastos, total = service.listar_gastos(
-            db=db,
-            usuario_id=usuario.id_usuario,
-            id_presupuesto=id_presupuesto,
-            alcance=alcance,
-            categoria_id=categoria_id,
-            limite=limite,
-            offset=offset,
-        )
-
-        return {
-            "gastos": gastos,
-            "total": total,
-            "limite": limite,
-            "offset": offset,
-        }
-
-    except service.PresupuestoNoEncontradoError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="PRESUPUESTO_NO_ENCONTRADO",
-        )
-
-    except service.CategoriaNoEncontradaError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="CATEGORIA_NO_ENCONTRADA",
-        )
+@router.post("/presupuestos/{id_periodo}/cancelar")
+def cancelar(id_periodo:UUID,db:Session=Depends(get_db),usuario:Usuario=Depends(get_current_user)):
+    try: return service.cerrar(db,usuario.id_usuario,id_periodo,"CANCELADO")
+    except service.PresupuestoError as exc: manejar(exc)

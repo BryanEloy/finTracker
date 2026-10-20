@@ -1,3 +1,4 @@
+
 from uuid import UUID
 
 import jwt
@@ -16,43 +17,51 @@ oauth2_scheme = OAuth2PasswordBearer(
 )
 
 
-def get_current_user(
+def get_authenticated_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> Usuario:
+    """
+    Valida JWT y existencia del usuario.
+    Permite usuarios activos e inactivos.
+    """
 
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Token inválido o expirado",
-        headers={
-            "WWW-Authenticate": "Bearer"
-        },
+        headers={"WWW-Authenticate": "Bearer"},
     )
 
     try:
         payload = decode_access_token(token)
-
         subject = payload.get("sub")
 
-        if subject is None:
+        if not isinstance(subject, str):
             raise credentials_exception
 
         id_usuario = UUID(subject)
 
-    except (
-        jwt.InvalidTokenError,
-        ValueError,
-        TypeError,
-    ):
+    except (jwt.InvalidTokenError, ValueError, TypeError):
         raise credentials_exception
 
     usuario = repository.obtener_por_id(
         db,
-        id_usuario
+        id_usuario,
     )
 
     if usuario is None:
         raise credentials_exception
+
+    return usuario
+
+
+def get_current_user(
+    usuario: Usuario = Depends(get_authenticated_user),
+) -> Usuario:
+    """
+    Dependencia para endpoints privados.
+    Solo permite usuarios activos.
+    """
 
     if not usuario.es_activo_usuario:
         raise HTTPException(

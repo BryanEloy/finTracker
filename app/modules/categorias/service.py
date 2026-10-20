@@ -35,6 +35,10 @@ class DatosInvalidosError(Exception):
     pass
 
 
+class GrupoNoElegibleError(Exception):
+    pass
+
+
 # ============================================================
 # FUNCIONES AUXILIARES
 # ============================================================
@@ -64,8 +68,11 @@ def crear_categoria(
     db: Session,
     usuario_id: UUID,
     nombre_categoria: str,
+    grupo_id: UUID,
 ) -> Categoria:
 
+    repository.bloquear_usuario(db, usuario_id)
+    validar_grupo(db, usuario_id, grupo_id)
     nombre = normalizar_nombre(nombre_categoria)
 
     existente = repository.obtener_categoria_por_nombre(
@@ -79,15 +86,16 @@ def crear_categoria(
 
     categoria = Categoria(
         usuario_id=usuario_id,
+        grupo_id=grupo_id,
         nombre_categoria=nombre,
         es_activa_categoria=True,
     )
 
     try:
-        return repository.crear_categoria(
+        return guardar(db, repository.crear_categoria(
             db=db,
             categoria=categoria,
-        )
+        ))
 
     except IntegrityError:
         # El índice UNIQUE de PostgreSQL también protege
@@ -133,6 +141,8 @@ def renombrar_categoria(
     nombre_categoria: str,
 ) -> Categoria:
 
+    repository.bloquear_usuario(db, usuario_id)
+
     categoria = obtener_categoria(
         db=db,
         usuario_id=usuario_id,
@@ -159,11 +169,11 @@ def renombrar_categoria(
         return categoria
 
     try:
-        return repository.actualizar_nombre_categoria(
+        return guardar(db, repository.actualizar_nombre_categoria(
             db=db,
             categoria=categoria,
             nombre_categoria=nombre,
-        )
+        ))
 
     except IntegrityError:
         raise NombreCategoriaDuplicadoError()
@@ -176,6 +186,8 @@ def cambiar_estado_categoria(
     nuevo_estado: bool,
 ) -> Categoria:
 
+    repository.bloquear_usuario(db, usuario_id)
+
     categoria = obtener_categoria(
         db=db,
         usuario_id=usuario_id,
@@ -186,11 +198,11 @@ def cambiar_estado_categoria(
     if categoria.es_activa_categoria == nuevo_estado:
         return categoria
 
-    return repository.cambiar_estado_categoria(
+    return guardar(db, repository.cambiar_estado_categoria(
         db=db,
         categoria=categoria,
         nuevo_estado=nuevo_estado,
-    )
+        ))
 
 
 # ============================================================
@@ -203,6 +215,8 @@ def crear_subcategoria(
     id_categoria: UUID,
     nombre_subcategoria: str,
 ) -> Subcategoria:
+
+    repository.bloquear_usuario(db, usuario_id)
 
     # Además de comprobar existencia, comprueba propiedad.
     categoria = obtener_categoria(
@@ -232,10 +246,10 @@ def crear_subcategoria(
     )
 
     try:
-        return repository.crear_subcategoria(
+        return guardar(db, repository.crear_subcategoria(
             db=db,
             subcategoria=subcategoria,
-        )
+        ))
 
     except IntegrityError:
         raise NombreSubcategoriaDuplicadoError()
@@ -288,6 +302,8 @@ def renombrar_subcategoria(
     nombre_subcategoria: str,
 ) -> Subcategoria:
 
+    repository.bloquear_usuario(db, usuario_id)
+
     subcategoria = obtener_subcategoria(
         db=db,
         usuario_id=usuario_id,
@@ -313,11 +329,11 @@ def renombrar_subcategoria(
         return subcategoria
 
     try:
-        return repository.actualizar_nombre_subcategoria(
+        return guardar(db, repository.actualizar_nombre_subcategoria(
             db=db,
             subcategoria=subcategoria,
             nombre_subcategoria=nombre,
-        )
+        ))
 
     except IntegrityError:
         raise NombreSubcategoriaDuplicadoError()
@@ -329,6 +345,8 @@ def cambiar_estado_subcategoria(
     id_subcategoria: UUID,
     nuevo_estado: bool,
 ) -> Subcategoria:
+
+    repository.bloquear_usuario(db, usuario_id)
 
     subcategoria = obtener_subcategoria(
         db=db,
@@ -360,8 +378,35 @@ def cambiar_estado_subcategoria(
 
     # ACTIVA -> INACTIVA sí está permitido aunque
     # la categoría padre esté inactiva.
-    return repository.cambiar_estado_subcategoria(
+    return guardar(db, repository.cambiar_estado_subcategoria(
         db=db,
         subcategoria=subcategoria,
         nuevo_estado=nuevo_estado,
-    )
+        ))
+
+def validar_grupo(db: Session, usuario_id: UUID, grupo_id: UUID) -> None:
+    grupo = repository.obtener_grupo_propio(db, usuario_id, grupo_id)
+    if grupo is None or not grupo["es_activo_grupo"]:
+        raise GrupoNoElegibleError()
+
+
+def guardar(db: Session, objeto):
+    try:
+        db.commit()
+        db.refresh(objeto)
+        return objeto
+    except Exception:
+        db.rollback()
+        raise
+
+
+def cambiar_grupo_categoria(
+    db: Session, usuario_id: UUID, id_categoria: UUID, grupo_id: UUID
+) -> Categoria:
+    repository.bloquear_usuario(db, usuario_id)
+    categoria = obtener_categoria(db, usuario_id, id_categoria)
+    validar_grupo(db, usuario_id, grupo_id)
+    if categoria.grupo_id == grupo_id:
+        return categoria
+    categoria.grupo_id = grupo_id
+    return guardar(db, categoria)

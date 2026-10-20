@@ -1,7 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.modules.categorias.model import Categoria, Subcategoria
@@ -82,14 +81,8 @@ def crear_categoria(
 
     db.add(categoria)
 
-    try:
-        db.commit()
-        db.refresh(categoria)
-        return categoria
-
-    except IntegrityError:
-        db.rollback()
-        raise
+    db.flush()
+    return categoria
 
 
 def actualizar_nombre_categoria(
@@ -100,14 +93,8 @@ def actualizar_nombre_categoria(
 
     categoria.nombre_categoria = nombre_categoria
 
-    try:
-        db.commit()
-        db.refresh(categoria)
-        return categoria
-
-    except IntegrityError:
-        db.rollback()
-        raise
+    db.flush()
+    return categoria
 
 
 def cambiar_estado_categoria(
@@ -118,9 +105,7 @@ def cambiar_estado_categoria(
 
     categoria.es_activa_categoria = nuevo_estado
 
-    db.commit()
-    db.refresh(categoria)
-
+    db.flush()
     return categoria
 
 
@@ -208,14 +193,8 @@ def crear_subcategoria(
 
     db.add(subcategoria)
 
-    try:
-        db.commit()
-        db.refresh(subcategoria)
-        return subcategoria
-
-    except IntegrityError:
-        db.rollback()
-        raise
+    db.flush()
+    return subcategoria
 
 
 def actualizar_nombre_subcategoria(
@@ -226,14 +205,8 @@ def actualizar_nombre_subcategoria(
 
     subcategoria.nombre_subcategoria = nombre_subcategoria
 
-    try:
-        db.commit()
-        db.refresh(subcategoria)
-        return subcategoria
-
-    except IntegrityError:
-        db.rollback()
-        raise
+    db.flush()
+    return subcategoria
 
 
 def cambiar_estado_subcategoria(
@@ -244,7 +217,23 @@ def cambiar_estado_subcategoria(
 
     subcategoria.es_activa_subcategoria = nuevo_estado
 
-    db.commit()
-    db.refresh(subcategoria)
-
+    db.flush()
     return subcategoria
+
+# V1.1: bloqueo compartido por los escritores financieros.
+def bloquear_usuario(db: Session, usuario_id: UUID) -> None:
+    db.execute(
+        text("SELECT public.fn_usuario_lock_v11(:usuario_id, true)"),
+        {"usuario_id": usuario_id},
+    )
+
+
+def obtener_grupo_propio(db: Session, usuario_id: UUID, grupo_id: UUID):
+    return db.execute(
+        text("""
+            SELECT id_grupo, es_activo_grupo
+            FROM public.grupo
+            WHERE usuario_id = :usuario_id AND id_grupo = :grupo_id
+        """),
+        {"usuario_id": usuario_id, "grupo_id": grupo_id},
+    ).mappings().one_or_none()

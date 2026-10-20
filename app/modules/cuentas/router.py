@@ -31,6 +31,8 @@ from app.modules.cuentas.service import (
     listar_cuentas,
     obtener_cuenta,
     registrar_cuenta,
+    EstadoFinancieroCuentaNoDisponibleError,
+    SaldoInicialBloqueadoError
 )
 from app.modules.usuarios.model import Usuario
 
@@ -75,6 +77,12 @@ def crear_cuenta(
             detail="DATOS_CUENTA_INVALIDOS",
         )
 
+    except EstadoFinancieroCuentaNoDisponibleError:
+        raise HTTPException(
+            status_code=500,
+            detail="ESTADO_FINANCIERO_CUENTA_NO_DISPONIBLE",
+        )
+
 
 @router.get(
     "",
@@ -92,12 +100,19 @@ def obtener_cuentas(
     ),
     db: Session = Depends(get_db),
 ):
-    return listar_cuentas(
-        db,
-        usuario,
-        estado,
-        operacion,
-    )
+    try:
+        return listar_cuentas(
+            db,
+            usuario,
+            estado,
+            operacion,
+        )
+
+    except EstadoFinancieroCuentaNoDisponibleError:
+        raise HTTPException(
+            status_code=500,
+            detail="ESTADO_FINANCIERO_CUENTA_NO_DISPONIBLE",
+        )
 
 
 @router.get(
@@ -122,6 +137,12 @@ def obtener_detalle_cuenta(
         raise HTTPException(
             status_code=404,
             detail="CUENTA_NO_ENCONTRADA",
+        )
+    
+    except EstadoFinancieroCuentaNoDisponibleError:
+        raise HTTPException(
+            status_code=500,
+            detail="ESTADO_FINANCIERO_CUENTA_NO_DISPONIBLE",
         )
 
 
@@ -167,6 +188,18 @@ def modificar_cuenta(
         raise HTTPException(
             status_code=422,
             detail="DATOS_CUENTA_INVALIDOS",
+        )
+
+    except EstadoFinancieroCuentaNoDisponibleError:
+        raise HTTPException(
+            status_code=500,
+            detail="ESTADO_FINANCIERO_CUENTA_NO_DISPONIBLE",
+        )
+
+    except SaldoInicialBloqueadoError:
+        raise HTTPException(
+            status_code=409,
+            detail="SALDO_INICIAL_BLOQUEADO_POR_TRANSACCIONES",
         )
 
 

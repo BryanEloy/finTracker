@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import Enum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.modules.cuentas.model import TipoCuenta
 
@@ -55,6 +55,28 @@ class CuentaCrearEntrada(BaseModel):
 
 
 class CuentaActualizarEntrada(BaseModel):
+    
+    @field_validator("nombre_cuenta")
+    @classmethod
+    def validar_nombre_cuenta(
+        cls,
+        valor: str | None,
+    ) -> str:
+
+        if valor is None:
+            raise ValueError(
+                "El nombre de cuenta no puede ser null"
+            )
+
+        valor = valor.strip()
+
+        if len(valor) < 2:
+            raise ValueError(
+                "El nombre debe tener al menos 2 caracteres"
+            )
+
+        return valor
+
     nombre_cuenta: str | None = Field(
         default=None,
         min_length=2,
@@ -95,6 +117,7 @@ class CuentaPublica(BaseModel):
     id_cuenta: UUID
     nombre_cuenta: str
     tipo_cuenta: TipoCuenta
+
     institucion_cuenta: str | None
     numero_cuenta_enmascarado: str | None
 
@@ -102,11 +125,14 @@ class CuentaPublica(BaseModel):
     fecha_creacion_cuenta: datetime
 
     saldo_inicial_cuenta: Decimal
-    saldo_actual_cuenta: Decimal
+    saldo_actual_cuenta: Decimal | None
 
     limite_credito_cuenta: Decimal | None
 
     credito_utilizado_cuenta: Decimal | None
+    reserva_total_cuenta: Decimal | None
+    dinero_libre_cuenta: Decimal | None
+
     saldo_disponible_credito_cuenta: Decimal | None
     porcentaje_utilizacion_credito_cuenta: Decimal | None
 
@@ -115,10 +141,18 @@ class CuentaListaItem(BaseModel):
     id_cuenta: UUID
     nombre_cuenta: str
     tipo_cuenta: TipoCuenta
+
     institucion_cuenta: str | None
     numero_cuenta_enmascarado: str | None
+
     es_activa_cuenta: bool
-    saldo_actual_cuenta: Decimal
+
+    saldo_actual_cuenta: Decimal | None
+    credito_utilizado_cuenta: Decimal | None
+    reserva_total_cuenta: Decimal | None
+    dinero_libre_cuenta: Decimal | None
+    saldo_disponible_credito_cuenta: Decimal | None
+    porcentaje_utilizacion_credito_cuenta: Decimal | None
 
 
 class CuentaListaSalida(BaseModel):

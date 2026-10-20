@@ -9,6 +9,7 @@ from app.modules.categorias import service
 from app.modules.categorias.schemas import (
     CategoriaActualizarEntrada,
     CategoriaCrearEntrada,
+    CategoriaCambiarGrupoEntrada,
     CategoriaEstadoEntrada,
     CategoriaEstadoSalida,
     CategoriaListaSalida,
@@ -46,7 +47,11 @@ def crear_categoria(
             db=db,
             usuario_id=usuario.id_usuario,
             nombre_categoria=datos.nombre_categoria,
+            grupo_id=datos.grupo_id,
         )
+
+    except service.GrupoNoElegibleError:
+        raise HTTPException(status_code=422, detail="GRUPO_NO_ELEGIBLE")
 
     except service.NombreCategoriaDuplicadoError:
         raise HTTPException(
@@ -345,3 +350,25 @@ def cambiar_estado_subcategoria(
             status_code=status.HTTP_409_CONFLICT,
             detail="CATEGORIA_INACTIVA",
         )
+
+@router.patch(
+    "/categorias/{id_categoria}/grupo",
+    response_model=CategoriaSalida,
+)
+def cambiar_grupo_categoria(
+    id_categoria: UUID,
+    datos: CategoriaCambiarGrupoEntrada,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
+):
+    try:
+        return service.cambiar_grupo_categoria(
+            db=db,
+            usuario_id=usuario.id_usuario,
+            id_categoria=id_categoria,
+            grupo_id=datos.grupo_id,
+        )
+    except service.CategoriaNoEncontradaError:
+        raise HTTPException(status_code=404, detail="CATEGORIA_NO_ENCONTRADA")
+    except service.GrupoNoElegibleError:
+        raise HTTPException(status_code=422, detail="GRUPO_NO_ELEGIBLE")

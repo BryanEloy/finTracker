@@ -7,19 +7,25 @@ from fastapi import (
 )
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_current_user
+from app.core.dependencies import (
+    get_current_user,
+    get_authenticated_user
+)
 from app.db.session import get_db
 from app.modules.usuarios.model import Usuario
 from app.modules.usuarios.schemas import (
     CambiarPasswordEntrada,
     UsuarioActualizarEntrada,
     UsuarioPublico,
+    ResumenDashboardSalida
 )
 from app.modules.usuarios.service import (
     PasswordActualIncorrectoError,
     actualizar_perfil,
     cambiar_password,
     desactivar_usuario,
+    reactivar_usuario,
+    consultar_resumen_dashboard
 )
 
 
@@ -120,3 +126,50 @@ def desactivar_mi_cuenta(
     return Response(
         status_code=status.HTTP_204_NO_CONTENT
     )
+
+
+# =========================================================
+# REACTIVAR MI CUENTA
+# PATCH /api/v1/usuarios/me/reactivar
+# =========================================================
+
+@router.patch(
+    "/me/reactivar",
+    response_model=UsuarioPublico,
+    status_code=status.HTTP_200_OK,
+)
+def reactivar_mi_cuenta(
+    usuario: Usuario = Depends(get_authenticated_user),
+    db: Session = Depends(get_db),
+):
+    return reactivar_usuario(
+        db,
+        usuario,
+    )
+
+# =========================================================
+# RESUMEN FINANCIERO DEL DASHBOARD
+# GET /api/v1/usuarios/me/resumen-dashboard
+# =========================================================
+
+@router.get(
+    "/me/resumen-dashboard",
+    response_model=ResumenDashboardSalida,
+    status_code=status.HTTP_200_OK,
+)
+def obtener_resumen_dashboard(
+    usuario: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    resumen = consultar_resumen_dashboard(
+        db,
+        usuario,
+    )
+
+    if resumen is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontró el resumen financiero del usuario",
+        )
+
+    return resumen

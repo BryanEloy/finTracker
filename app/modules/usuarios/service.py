@@ -14,6 +14,8 @@ from app.modules.usuarios.schemas import (
     UsuarioActualizarEntrada,
     UsuarioRegistroEntrada,
     UsuarioToken,
+    ResumenDashboardSalida,
+    PeriodoActivoDashboard
 )
 
 
@@ -115,9 +117,6 @@ def autenticar_usuario(
     if not password_correcto:
         raise CredencialesIncorrectasError()
 
-    if not usuario.es_activo_usuario:
-        raise UsuarioDesactivadoError()
-
     access_token = create_access_token(
         usuario.id_usuario
     )
@@ -148,10 +147,8 @@ def actualizar_perfil(
         exclude_unset=True
     )
 
-    if "nombre_usuario" in cambios:
-        cambios["nombre_usuario"] = (
-            cambios["nombre_usuario"].strip()
-        )
+    if not cambios:
+        return usuario
 
     return repository.actualizar(
         db,
@@ -202,3 +199,47 @@ def desactivar_usuario(
         db,
         usuario,
     )
+
+def reactivar_usuario(
+    db: Session,
+    usuario: Usuario,
+) -> Usuario:
+    return repository.reactivar(
+        db,
+        usuario,
+    )
+
+
+def consultar_resumen_dashboard(
+    db: Session,
+    usuario: Usuario,
+) -> ResumenDashboardSalida | None:
+
+    datos_financieros = repository.obtener_resumen_dashboard(
+        db,
+        usuario.id_usuario,
+    )
+
+    if datos_financieros is None:
+        return None
+
+    datos_periodo = repository.obtener_periodo_activo_dashboard(
+        db,
+        usuario.id_usuario,
+    )
+
+    resumen = ResumenDashboardSalida.model_validate(
+        {
+            **datos_financieros,
+            "periodo_activo": (
+                PeriodoActivoDashboard.model_validate(
+                    datos_periodo
+                )
+                if datos_periodo is not None
+                else None
+            ),
+        }
+    )
+
+    return resumen
+

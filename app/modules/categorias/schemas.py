@@ -15,6 +15,7 @@ class EstadoFiltro(str, Enum):
 # =========================
 
 class CategoriaCrearEntrada(BaseModel):
+    grupo_id: UUID
     nombre_categoria: str = Field(
         min_length=2,
         max_length=100,
@@ -34,6 +35,7 @@ class CategoriaEstadoEntrada(BaseModel):
 
 class CategoriaSalida(BaseModel):
     id_categoria: UUID
+    grupo_id: UUID
     nombre_categoria: str
     es_activa_categoria: bool
 
@@ -89,3 +91,8 @@ class SubcategoriaListaSalida(BaseModel):
 class SubcategoriaEstadoSalida(BaseModel):
     id_subcategoria: UUID
     es_activa_subcategoria: bool
+
+class CategoriaCambiarGrupoEntrada(BaseModel):
+    grupo_id: UUID
+
+    model_config = ConfigDict(extra="forbid")

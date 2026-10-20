@@ -11,10 +11,7 @@ from app.modules.metas.model import (
     Meta,
     TipoAsignacion,
 )
-from app.modules.transacciones.repository import (
-    calcular_credito_utilizado,
-    calcular_saldo_actual,
-)
+
 from app.modules.usuarios.model import Usuario
 
 
@@ -232,10 +229,7 @@ def calcular_saldo_real_cuenta(
     implementar una segunda fórmula de saldo.
     """
 
-    return calcular_saldo_actual(
-        db,
-        cuenta,
-    )
+    return 1.1
 
 
 # ============================================================

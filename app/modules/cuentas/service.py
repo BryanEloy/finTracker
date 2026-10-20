@@ -38,6 +38,9 @@ class LimiteCreditoInvalidoError(Exception):
 class SaldoInicialBloqueadoError(Exception):
     pass
 
+class EstadoFinancieroCuentaNoDisponibleError(Exception):
+    pass
+
 
 def normalizar_texto(
     valor: str | None,
@@ -109,97 +112,41 @@ def validar_credito(
             raise LimiteCreditoInvalidoError()
 
 
-def calcular_credito_utilizado(
-    cuenta: Cuenta,
-) -> Decimal | None:
-
-    if cuenta.tipo_cuenta != TipoCuenta.CREDITO:
-        return None
-
-    # Hasta implementar Transacciones:
-    return cuenta.saldo_inicial_cuenta
-
-
-def calcular_saldo_actual(
-    cuenta: Cuenta,
-) -> Decimal:
-
-    if cuenta.tipo_cuenta == TipoCuenta.CREDITO:
-        credito_utilizado = calcular_credito_utilizado(
-            cuenta
-        )
-
-        return credito_utilizado or Decimal("0")
-
-    # Hasta implementar Transacciones:
-    return cuenta.saldo_inicial_cuenta
-
-
 def construir_cuenta_publica(
     cuenta: Cuenta,
+    estado_financiero: dict,
 ) -> CuentaPublica:
-
-    credito_utilizado = calcular_credito_utilizado(
-        cuenta
-    )
-
-    saldo_disponible = None
-    porcentaje = None
-
-    if cuenta.tipo_cuenta == TipoCuenta.CREDITO:
-
-        saldo_disponible = (
-            cuenta.limite_credito_cuenta
-            - credito_utilizado
-        )
-
-        porcentaje = (
-            (
-                credito_utilizado
-                / cuenta.limite_credito_cuenta
-            )
-            * Decimal("100")
-        ).quantize(
-            Decimal("0.01"),
-            rounding=ROUND_HALF_UP,
-        )
 
     return CuentaPublica(
         id_cuenta=cuenta.id_cuenta,
         nombre_cuenta=cuenta.nombre_cuenta,
         tipo_cuenta=cuenta.tipo_cuenta,
-        institucion_cuenta=(
-            cuenta.institucion_cuenta
+        institucion_cuenta=cuenta.institucion_cuenta,
+        numero_cuenta_enmascarado=enmascarar_numero_cuenta(
+            cuenta.numero_cuenta
         ),
-        numero_cuenta_enmascarado=(
-            enmascarar_numero_cuenta(
-                cuenta.numero_cuenta
-            )
-        ),
-        es_activa_cuenta=(
-            cuenta.es_activa_cuenta
-        ),
-        fecha_creacion_cuenta=(
-            cuenta.fecha_creacion_cuenta
-        ),
-        saldo_inicial_cuenta=(
-            cuenta.saldo_inicial_cuenta
-        ),
-        saldo_actual_cuenta=(
-            calcular_saldo_actual(cuenta)
-        ),
-        limite_credito_cuenta=(
-            cuenta.limite_credito_cuenta
-        ),
-        credito_utilizado_cuenta=(
-            credito_utilizado
-        ),
-        saldo_disponible_credito_cuenta=(
-            saldo_disponible
-        ),
-        porcentaje_utilizacion_credito_cuenta=(
-            porcentaje
-        ),
+        es_activa_cuenta=cuenta.es_activa_cuenta,
+        fecha_creacion_cuenta=cuenta.fecha_creacion_cuenta,
+        saldo_inicial_cuenta=cuenta.saldo_inicial_cuenta,
+        saldo_actual_cuenta=estado_financiero[
+            "saldo_actual_cuenta"
+        ],
+        limite_credito_cuenta=cuenta.limite_credito_cuenta,
+        credito_utilizado_cuenta=estado_financiero[
+            "credito_utilizado_cuenta"
+        ],
+        reserva_total_cuenta=estado_financiero[
+            "reserva_total_cuenta"
+        ],
+        dinero_libre_cuenta=estado_financiero[
+            "dinero_libre_cuenta"
+        ],
+        saldo_disponible_credito_cuenta=estado_financiero[
+            "saldo_disponible_credito_cuenta"
+        ],
+        porcentaje_utilizacion_credito_cuenta=estado_financiero[
+            "porcentaje_utilizacion_credito_cuenta"
+        ],
     )
 
 
@@ -211,16 +158,8 @@ def registrar_cuenta(
 
     nombre = datos.nombre_cuenta.strip()
 
-    cuenta_existente = (
-        repository.obtener_por_nombre(
-            db,
-            usuario.id_usuario,
-            nombre,
-        )
-    )
-
-    if cuenta_existente is not None:
-        raise NombreCuentaDuplicadoError()
+    if len(nombre) < 2:
+        raise DatosCuentaInvalidosError()
 
     institucion = normalizar_texto(
         datos.institucion_cuenta
@@ -236,31 +175,60 @@ def registrar_cuenta(
         datos.limite_credito_cuenta,
     )
 
-    cuenta = Cuenta(
-        usuario_id=usuario.id_usuario,
-        nombre_cuenta=nombre,
-        tipo_cuenta=datos.tipo_cuenta,
-        institucion_cuenta=institucion,
-        numero_cuenta=numero,
-        saldo_inicial_cuenta=(
-            datos.saldo_inicial_cuenta
-        ),
-        limite_credito_cuenta=(
-            datos.limite_credito_cuenta
-        ),
-    )
-
     try:
+        repository.bloquear_usuario_v11(
+            db,
+            usuario.id_usuario,
+        )
+
+        cuenta_existente = repository.obtener_por_nombre(
+            db,
+            usuario.id_usuario,
+            nombre,
+        )
+
+        if cuenta_existente is not None:
+            raise NombreCuentaDuplicadoError()
+
+        cuenta = Cuenta(
+            usuario_id=usuario.id_usuario,
+            nombre_cuenta=nombre,
+            tipo_cuenta=datos.tipo_cuenta,
+            institucion_cuenta=institucion,
+            numero_cuenta=numero,
+            saldo_inicial_cuenta=datos.saldo_inicial_cuenta,
+            limite_credito_cuenta=datos.limite_credito_cuenta,
+        )
+
         cuenta = repository.crear(
             db,
             cuenta,
         )
 
+        db.commit()
+
     except IntegrityError:
+        db.rollback()
         raise NombreCuentaDuplicadoError()
 
+    except Exception:
+        db.rollback()
+        raise
+
+    estado_financiero = (
+        repository.obtener_estado_financiero_cuenta(
+            db,
+            cuenta.id_cuenta,
+            usuario.id_usuario,
+        )
+    )
+
+    if estado_financiero is None:
+        raise EstadoFinancieroCuentaNoDisponibleError()
+
     return construir_cuenta_publica(
-        cuenta
+        cuenta,
+        estado_financiero,
     )
 
 
@@ -291,7 +259,6 @@ def listar_cuentas(
         ]
 
     if operacion is not None:
-
         cuentas = [
             cuenta
             for cuenta in cuentas
@@ -301,30 +268,55 @@ def listar_cuentas(
             )
         ]
 
-    items = [
-        CuentaListaItem(
-            id_cuenta=cuenta.id_cuenta,
-            nombre_cuenta=cuenta.nombre_cuenta,
-            tipo_cuenta=cuenta.tipo_cuenta,
-            institucion_cuenta=(
-                cuenta.institucion_cuenta
-            ),
-            numero_cuenta_enmascarado=(
-                enmascarar_numero_cuenta(
-                    cuenta.numero_cuenta
-                )
-            ),
-            es_activa_cuenta=(
-                cuenta.es_activa_cuenta
-            ),
-            saldo_actual_cuenta=(
-                calcular_saldo_actual(
-                    cuenta
-                )
-            ),
+    estados_financieros = (
+        repository.listar_estados_financieros_cuentas(
+            db,
+            usuario.id_usuario,
         )
-        for cuenta in cuentas
-    ]
+    )
+
+    items = []
+
+    for cuenta in cuentas:
+        datos = estados_financieros.get(
+            cuenta.id_cuenta
+        )
+
+        if datos is None:
+            raise EstadoFinancieroCuentaNoDisponibleError()
+
+        items.append(
+            CuentaListaItem(
+                id_cuenta=cuenta.id_cuenta,
+                nombre_cuenta=cuenta.nombre_cuenta,
+                tipo_cuenta=cuenta.tipo_cuenta,
+                institucion_cuenta=cuenta.institucion_cuenta,
+                numero_cuenta_enmascarado=(
+                    enmascarar_numero_cuenta(
+                        cuenta.numero_cuenta
+                    )
+                ),
+                es_activa_cuenta=cuenta.es_activa_cuenta,
+                saldo_actual_cuenta=datos[
+                    "saldo_actual_cuenta"
+                ],
+                credito_utilizado_cuenta=datos[
+                    "credito_utilizado_cuenta"
+                ],
+                reserva_total_cuenta=datos[
+                    "reserva_total_cuenta"
+                ],
+                dinero_libre_cuenta=datos[
+                    "dinero_libre_cuenta"
+                ],
+                saldo_disponible_credito_cuenta=datos[
+                    "saldo_disponible_credito_cuenta"
+                ],
+                porcentaje_utilizacion_credito_cuenta=datos[
+                    "porcentaje_utilizacion_credito_cuenta"
+                ],
+            )
+        )
 
     return CuentaListaSalida(
         cuentas=items,
@@ -373,6 +365,7 @@ def cuenta_es_elegible(
     return False
 
 
+
 def obtener_cuenta(
     db: Session,
     usuario: Usuario,
@@ -388,8 +381,20 @@ def obtener_cuenta(
     if cuenta is None:
         raise CuentaNoEncontradaError()
 
+    estado_financiero = (
+        repository.obtener_estado_financiero_cuenta(
+            db,
+            cuenta.id_cuenta,
+            usuario.id_usuario,
+        )
+    )
+
+    if estado_financiero is None:
+        raise EstadoFinancieroCuentaNoDisponibleError()
+
     return construir_cuenta_publica(
-        cuenta
+        cuenta,
+        estado_financiero,
     )
 
 
@@ -400,93 +405,148 @@ def actualizar_cuenta(
     datos: CuentaActualizarEntrada,
 ) -> CuentaPublica:
 
-    cuenta = repository.obtener_por_id(
-        db,
-        id_cuenta,
-        usuario.id_usuario,
-    )
-
-    if cuenta is None:
-        raise CuentaNoEncontradaError()
-
     cambios = datos.model_dump(
         exclude_unset=True
     )
 
+    # Validaciones independientes de la base de datos
     if "nombre_cuenta" in cambios:
+        nombre = cambios["nombre_cuenta"]
 
-        nombre = cambios[
-            "nombre_cuenta"
-        ].strip()
+        if nombre is None or len(nombre.strip()) < 2:
+            raise DatosCuentaInvalidosError()
 
-        otra = repository.obtener_por_nombre(
-            db,
-            usuario.id_usuario,
-            nombre,
-        )
-
-        if (
-            otra is not None
-            and otra.id_cuenta != cuenta.id_cuenta
-        ):
-            raise NombreCuentaDuplicadoError()
-
-        cambios["nombre_cuenta"] = nombre
+        cambios["nombre_cuenta"] = nombre.strip()
 
     if "institucion_cuenta" in cambios:
-        cambios["institucion_cuenta"] = (
-            normalizar_texto(
-                cambios["institucion_cuenta"]
-            )
+        cambios["institucion_cuenta"] = normalizar_texto(
+            cambios["institucion_cuenta"]
         )
 
     if "numero_cuenta" in cambios:
-        cambios["numero_cuenta"] = (
-            normalizar_numero_cuenta(
-                cambios["numero_cuenta"]
-            )
+        cambios["numero_cuenta"] = normalizar_numero_cuenta(
+            cambios["numero_cuenta"]
         )
-
-    nuevo_saldo = cambios.get(
-        "saldo_inicial_cuenta",
-        cuenta.saldo_inicial_cuenta,
-    )
-
-    nuevo_limite = cambios.get(
-        "limite_credito_cuenta",
-        cuenta.limite_credito_cuenta,
-    )
-
-    validar_credito(
-        cuenta.tipo_cuenta,
-        nuevo_saldo,
-        nuevo_limite,
-    )
 
     if (
-        cuenta.tipo_cuenta
-        == TipoCuenta.CREDITO
-        and "limite_credito_cuenta" in cambios
+        "saldo_inicial_cuenta" in cambios
+        and cambios["saldo_inicial_cuenta"] is None
     ):
-        credito_utilizado = (
-            calcular_credito_utilizado(cuenta)
-        )
-
-        if nuevo_limite < credito_utilizado:
-            raise LimiteCreditoInvalidoError()
+        raise DatosCuentaInvalidosError()
 
     try:
-        cuenta = repository.actualizar(
+        # 1. Bloquear usuario antes de consultar y modificar
+        repository.bloquear_usuario_v11(
             db,
-            cuenta,
-            cambios,
+            usuario.id_usuario,
         )
 
-    except IntegrityError:
-        raise NombreCuentaDuplicadoError()
+        # 2. Obtener cuenta del usuario autenticado
+        cuenta = repository.obtener_por_id(
+            db,
+            id_cuenta,
+            usuario.id_usuario,
+        )
 
-    return construir_cuenta_publica(
-        cuenta
+        if cuenta is None:
+            raise CuentaNoEncontradaError()
+
+        # 3. Validar nombre duplicado
+        if "nombre_cuenta" in cambios:
+            otra = repository.obtener_por_nombre(
+                db,
+                usuario.id_usuario,
+                cambios["nombre_cuenta"],
+            )
+
+            if (
+                otra is not None
+                and otra.id_cuenta != cuenta.id_cuenta
+            ):
+                raise NombreCuentaDuplicadoError()
+
+        # 4. Proteger el saldo inicial
+        if "saldo_inicial_cuenta" in cambios:
+
+            saldo_nuevo = cambios["saldo_inicial_cuenta"]
+
+            if saldo_nuevo != cuenta.saldo_inicial_cuenta:
+                tiene_movimientos = (
+                    repository.cuenta_tiene_transacciones(
+                        db,
+                        cuenta.id_cuenta,
+                        usuario.id_usuario,
+                    )
+                )
+
+                if tiene_movimientos:
+                    raise SaldoInicialBloqueadoError()
+
+        # 5. Validar valores finales de la cuenta
+        nuevo_saldo = cambios.get(
+            "saldo_inicial_cuenta",
+            cuenta.saldo_inicial_cuenta,
+        )
+
+        nuevo_limite = cambios.get(
+            "limite_credito_cuenta",
+            cuenta.limite_credito_cuenta,
+        )
+
+        validar_credito(
+            cuenta.tipo_cuenta,
+            nuevo_saldo,
+            nuevo_limite,
+        )
+
+        # 6. Validar crédito utilizado real
+        if cuenta.tipo_cuenta == TipoCuenta.CREDITO:
+
+            estado_financiero = (
+                repository.obtener_estado_financiero_cuenta(
+                    db,
+                    cuenta.id_cuenta,
+                    usuario.id_usuario,
+                )
+            )
+
+            if estado_financiero is None:
+                raise EstadoFinancieroCuentaNoDisponibleError()
+
+            credito_utilizado = estado_financiero[
+                "credito_utilizado_cuenta"
+            ]
+
+            if credito_utilizado is None:
+                raise EstadoFinancieroCuentaNoDisponibleError()
+
+            if nuevo_limite < credito_utilizado:
+                raise LimiteCreditoInvalidoError()
+
+        # 7. Aplicar cambios
+        if cambios:
+            cuenta = repository.actualizar(
+                db,
+                cuenta,
+                cambios,
+            )
+
+        # 8. Confirmar transacción
+        db.commit()
+
+    except IntegrityError:
+        db.rollback()
+        raise DatosCuentaInvalidosError()
+
+    except Exception:
+        db.rollback()
+        raise
+
+    # 9. Consultar valores financieros confirmados
+    return obtener_cuenta(
+        db,
+        usuario,
+        id_cuenta,
     )
 
 
@@ -497,24 +557,35 @@ def cambiar_estado_cuenta(
     es_activa: bool,
 ) -> CuentaEstadoSalida:
 
-    cuenta = repository.obtener_por_id(
-        db,
-        id_cuenta,
-        usuario.id_usuario,
-    )
+    try:
+        repository.bloquear_usuario_v11(
+            db,
+            usuario.id_usuario,
+        )
 
-    if cuenta is None:
-        raise CuentaNoEncontradaError()
+        cuenta = repository.obtener_por_id(
+            db,
+            id_cuenta,
+            usuario.id_usuario,
+        )
 
-    cuenta = repository.cambiar_estado(
-        db,
-        cuenta,
-        es_activa,
-    )
+        if cuenta is None:
+            raise CuentaNoEncontradaError()
+
+        if cuenta.es_activa_cuenta != es_activa:
+            cuenta = repository.cambiar_estado(
+                db,
+                cuenta,
+                es_activa,
+            )
+
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise
 
     return CuentaEstadoSalida(
         id_cuenta=cuenta.id_cuenta,
-        es_activa_cuenta=(
-            cuenta.es_activa_cuenta
-        ),
+        es_activa_cuenta=cuenta.es_activa_cuenta,
     )

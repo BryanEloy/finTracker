@@ -16,7 +16,6 @@ from app.modules.usuarios.schemas import (
 from app.modules.usuarios.service import (
     CorreoYaRegistradoError,
     CredencialesIncorrectasError,
-    UsuarioDesactivadoError,
     autenticar_usuario,
     registrar_usuario,
 )
@@ -86,9 +85,4 @@ def login(
                 "WWW-Authenticate": "Bearer"
             },
         )
-
-    except UsuarioDesactivadoError:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Usuario desactivado",
-        )
+    

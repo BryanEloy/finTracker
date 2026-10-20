@@ -3,12 +3,12 @@ from uuid import UUID
 
 import jwt
 from pwdlib import PasswordHash
-from pwdlib.hashers.bcrypt import BcryptHasher
+from pwdlib.hashers.argon2 import Argon2Hasher
 
 from app.core.config import settings
 
 
-password_hasher = PasswordHash((BcryptHasher(),))
+password_hasher = PasswordHash((Argon2Hasher(),))
 
 
 def hash_password(password: str) -> str:
@@ -26,13 +26,13 @@ def create_access_token(user_id: UUID) -> str:
 
     payload = {
         "sub": str(user_id),
-        "exp": expires_at
+        "exp": expires_at,
     }
 
     return jwt.encode(
         payload,
         settings.JWT_SECRET,
-        algorithm=settings.JWT_ALGORITHM
+        algorithm=settings.JWT_ALGORITHM,
     )
 
 
@@ -40,5 +40,5 @@ def decode_access_token(token: str) -> dict:
     return jwt.decode(
         token,
         settings.JWT_SECRET,
-        algorithms=[settings.JWT_ALGORITHM]
+        algorithms=[settings.JWT_ALGORITHM],
     )

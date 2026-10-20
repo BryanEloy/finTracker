@@ -1,559 +1,115 @@
-from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
 from app.modules.transacciones import repository
-from app.modules.transacciones.model import (
-    TipoTransaccion,
-    Transaccion,
-)
+from app.modules.transacciones.model import TipoTransaccion, Transaccion
+from app.modules.transacciones.schemas import TransaccionCrearEntrada
 
-
-# ============================================================
-# EXCEPCIONES
-# ============================================================
-
-class CuentaNoEncontradaError(Exception):
-    pass
 
 class TransaccionNoEncontradaError(Exception):
     pass
 
-class CuentaInactivaError(Exception):
+
+class CuentaNoEncontradaError(Exception):
     pass
 
 
-class CategoriaNoEncontradaError(Exception):
-    pass
-
-
-class CategoriaInactivaError(Exception):
-    pass
-
-
-class SubcategoriaNoEncontradaError(Exception):
-    pass
-
-
-class SubcategoriaInactivaError(Exception):
-    pass
-
-
-class SaldoInsuficienteError(Exception):
-    pass
-
-
-class LimiteCreditoExcedidoError(Exception):
-    pass
-
-
-class PagoSuperaDeudaError(Exception):
-    pass
-
-
-class DatosInvalidosError(Exception):
-    pass
-
-
-# ============================================================
-# AUXILIARES
-# ============================================================
-
-def obtener_tipo_cuenta(cuenta) -> str:
-    """
-    Devuelve el tipo de cuenta como texto independientemente
-    de si SQLAlchemy devuelve Enum o str.
-    """
-
-    tipo = cuenta.tipo_cuenta
-
-    if hasattr(tipo, "value"):
-        return tipo.value
-
-    return str(tipo)
-
-
-def validar_estructura(
-    tipo_transaccion: TipoTransaccion,
-    cuenta_id: UUID,
-    cuenta_destino_id: UUID | None,
-    categoria_id: UUID | None,
-    subcategoria_id: UUID | None,
-) -> None:
-
-    # --------------------------------------------------------
-    # INGRESO
-    # --------------------------------------------------------
-
-    if tipo_transaccion == TipoTransaccion.INGRESO:
-
-        if cuenta_destino_id is not None:
-            raise DatosInvalidosError()
-
-        if categoria_id is not None:
-            raise DatosInvalidosError()
-
-        if subcategoria_id is not None:
-            raise DatosInvalidosError()
-
-        return
-
-    # --------------------------------------------------------
-    # GASTO
-    # --------------------------------------------------------
-
-    if tipo_transaccion == TipoTransaccion.GASTO:
-
-        if cuenta_destino_id is not None:
-            raise DatosInvalidosError()
-
-        if categoria_id is None:
-            raise DatosInvalidosError()
-
-        return
-
-    # --------------------------------------------------------
-    # TRANSFERENCIA
-    # --------------------------------------------------------
-
-    if tipo_transaccion == TipoTransaccion.TRANSFERENCIA:
-
-        if cuenta_destino_id is None:
-            raise DatosInvalidosError()
-
-        if cuenta_destino_id == cuenta_id:
-            raise DatosInvalidosError()
-
-        if categoria_id is not None:
-            raise DatosInvalidosError()
-
-        if subcategoria_id is not None:
-            raise DatosInvalidosError()
-
-        return
-
-    raise DatosInvalidosError()
-
-
-def validar_tipo_cuenta(
-    tipo_transaccion: TipoTransaccion,
-    cuenta,
-    cuenta_destino=None,
-) -> None:
-
-    tipo_cuenta = obtener_tipo_cuenta(cuenta)
-
-    # INGRESO:
-    # EFECTIVO, DEBITO o AHORRO.
-    if tipo_transaccion == TipoTransaccion.INGRESO:
-
-        if tipo_cuenta not in {
-            "EFECTIVO",
-            "DEBITO",
-            "AHORRO",
-        }:
-            raise DatosInvalidosError()
-
-        return
-
-    # GASTO:
-    # EFECTIVO, DEBITO o CREDITO.
-    if tipo_transaccion == TipoTransaccion.GASTO:
-
-        if tipo_cuenta not in {
-            "EFECTIVO",
-            "DEBITO",
-            "CREDITO",
-        }:
-            raise DatosInvalidosError()
-
-        return
-
-    # TRANSFERENCIA:
-    # origen: EFECTIVO, DEBITO o AHORRO.
-    # destino: cualquiera de los cuatro tipos.
-    if tipo_transaccion == TipoTransaccion.TRANSFERENCIA:
-
-        if tipo_cuenta not in {
-            "EFECTIVO",
-            "DEBITO",
-            "AHORRO",
-        }:
-            raise DatosInvalidosError()
-
-        if cuenta_destino is None:
-            raise DatosInvalidosError()
-
-        tipo_destino = obtener_tipo_cuenta(
-            cuenta_destino
-        )
-
-        if tipo_destino not in {
-            "EFECTIVO",
-            "DEBITO",
-            "AHORRO",
-            "CREDITO",
-        }:
-            raise DatosInvalidosError()
-
-        return
-
-    raise DatosInvalidosError()
-
-
-# ============================================================
-# CLASIFICACIÓN
-# ============================================================
-
-def validar_clasificacion_gasto(
-    db: Session,
-    usuario_id: UUID,
-    categoria_id: UUID,
-    subcategoria_id: UUID | None,
-) -> None:
-
-    categoria = repository.obtener_categoria_propia(
-        db=db,
-        usuario_id=usuario_id,
-        id_categoria=categoria_id,
-    )
-
-    if not categoria:
-        raise CategoriaNoEncontradaError()
-
-    if not categoria.es_activa_categoria:
-        raise CategoriaInactivaError()
-
-    if subcategoria_id is None:
-        return
-
-    subcategoria = repository.obtener_subcategoria_propia(
-        db=db,
-        usuario_id=usuario_id,
-        id_subcategoria=subcategoria_id,
-    )
-
-    if not subcategoria:
-        raise SubcategoriaNoEncontradaError()
-
-    # Es propia, pero pertenece a otra categoría.
-    if subcategoria.categoria_id != categoria_id:
-        raise DatosInvalidosError()
-
-    if not subcategoria.es_activa_subcategoria:
-        raise SubcategoriaInactivaError()
-
-
-# ============================================================
-# VALIDACIÓN FINANCIERA
-# ============================================================
-
-def validar_gasto(
-    db: Session,
-    cuenta,
-    monto: Decimal,
-) -> None:
-
-    tipo_cuenta = obtener_tipo_cuenta(cuenta)
-
-    # --------------------------------------------------------
-    # GASTO NO CREDITICIO
-    # --------------------------------------------------------
-
-    if tipo_cuenta in {
-        "EFECTIVO",
-        "DEBITO",
-    }:
-        saldo_actual = repository.calcular_saldo_actual(
-            db=db,
-            cuenta=cuenta,
-        )
-
-        if monto > saldo_actual:
-            raise SaldoInsuficienteError()
-
-        return
-
-    # --------------------------------------------------------
-    # GASTO CON CRÉDITO
-    # --------------------------------------------------------
-
-    if tipo_cuenta == "CREDITO":
-
-        credito_utilizado = (
-            repository.calcular_credito_utilizado(
-                db=db,
-                cuenta=cuenta,
-            )
-        )
-
-        limite = Decimal(
-            cuenta.limite_credito_cuenta
-        )
-
-        if credito_utilizado + monto > limite:
-            raise LimiteCreditoExcedidoError()
-
-        return
-
-    raise DatosInvalidosError()
-
-
-def validar_transferencia(
-    db: Session,
-    cuenta_origen,
-    cuenta_destino,
-    monto: Decimal,
-) -> None:
-
-    # --------------------------------------------------------
-    # ORIGEN
-    # --------------------------------------------------------
-
-    saldo_origen = repository.calcular_saldo_actual(
-        db=db,
-        cuenta=cuenta_origen,
-    )
-
-    if monto > saldo_origen:
-        raise SaldoInsuficienteError()
-
-    # --------------------------------------------------------
-    # DESTINO CREDITO
-    # --------------------------------------------------------
-
-    tipo_destino = obtener_tipo_cuenta(
-        cuenta_destino
-    )
-
-    if tipo_destino == "CREDITO":
-
-        deuda_actual = (
-            repository.calcular_credito_utilizado(
-                db=db,
-                cuenta=cuenta_destino,
-            )
-        )
-
-        if monto > deuda_actual:
-            raise PagoSuperaDeudaError()
-
-
-# ============================================================
-# CREAR TRANSACCIÓN
-# ============================================================
-
-def crear_transaccion(
-    db: Session,
-    usuario_id: UUID,
-    tipo_transaccion: TipoTransaccion,
-    cuenta_id: UUID,
-    cuenta_destino_id: UUID | None,
-    categoria_id: UUID | None,
-    subcategoria_id: UUID | None,
-    monto_transaccion: Decimal,
-    comentario_transaccion: str | None,
-) -> Transaccion:
-
+class ReglaTransaccionError(Exception):
+    def __init__(self, codigo: str, status_code: int = 409):
+        self.codigo = codigo
+        self.status_code = status_code
+        super().__init__(codigo)
+
+
+# Mensajes explícitos de las funciones verificadas en Neon V1.1.
+ERRORES_BD = {
+    "CUENTA_NO_ENCONTRADA": (404, "CUENTA_NO_ENCONTRADA"),
+    "CUENTA_DESTINO_NO_ENCONTRADA": (404, "CUENTA_NO_ENCONTRADA"),
+    "CUENTA_INACTIVA": (409, "CUENTA_INACTIVA"),
+    "CUENTAS_IGUALES": (422, "CUENTAS_IGUALES"),
+    "MONTO_INVALIDO": (422, "MONTO_INVALIDO"),
+    "ENTRADA_LIQUIDA_NO_ADMITE_CREDITO": (422, "ENTRADA_LIQUIDA_NO_ADMITE_CREDITO"),
+    "AHORRO_NO_ADMITE_COMPRA_DIRECTA": (422, "AHORRO_NO_ADMITE_COMPRA_DIRECTA"),
+    "CREDITO_NO_PUEDE_ORIGINAR_TRANSFERENCIA_O_PAGO": (422, "CREDITO_NO_PUEDE_ORIGINAR_TRANSFERENCIA_O_PAGO"),
+    "EL_PASIVO_VINCULADO_DEBE_SER_CREDITO_PROPIO": (422, "EL_PASIVO_VINCULADO_DEBE_SER_CREDITO_PROPIO"),
+    "CATEGORIA_NO_ELEGIBLE": (409, "CATEGORIA_NO_ELEGIBLE"),
+    "SUBCATEGORIA_NO_ELEGIBLE": (409, "SUBCATEGORIA_NO_ELEGIBLE"),
+    "DINERO_LIBRE_INSUFICIENTE": (409, "DINERO_LIBRE_INSUFICIENTE"),
+    "LIMITE_CREDITO_EXCEDIDO": (409, "LIMITE_CREDITO_EXCEDIDO"),
+    "DEVOLUCION_SUPERA_DEUDA": (409, "DEVOLUCION_SUPERA_DEUDA"),
+    "PAGO_SUPERA_DEUDA": (409, "PAGO_SUPERA_DEUDA"),
+    "FECHA_OPERACION_FUTURA_O_INVALIDA": (422, "FECHA_OPERACION_FUTURA_O_INVALIDA"),
+    "FECHA_FUERA_DEL_PERIODO_ACTIVO": (409, "FECHA_FUERA_DEL_PERIODO_ACTIVO"),
+    "USUARIO_NO_ENCONTRADO": (403, "USUARIO_NO_DISPONIBLE"),
+    "USUARIO_DESACTIVADO": (403, "USUARIO_DESACTIVADO"),
+    "AISLAMIENTO_NO_ADMITIDO": (500, "AISLAMIENTO_NO_ADMITIDO"),
+}
+
+
+def traducir_error_bd(exc: DBAPIError) -> ReglaTransaccionError | None:
+    original = getattr(exc, "orig", None)
+    diag = getattr(original, "diag", None)
+    mensaje = getattr(diag, "message_primary", None) or str(original or "")
+    for clave, (estado, codigo) in ERRORES_BD.items():
+        if mensaje.startswith(clave):
+            return ReglaTransaccionError(codigo, estado)
+    # Una restricción de estructura o referencia puede fallar antes/después del trigger.
+    codigo_sql = getattr(original, "pgcode", None) or getattr(original, "sqlstate", None)
+    if codigo_sql in {"23514", "23502", "22P02"}:
+        return ReglaTransaccionError("ESTRUCTURA_TRANSACCION_INVALIDA", 422)
+    if codigo_sql == "23503":
+        return ReglaTransaccionError("REFERENCIA_TRANSACCION_INVALIDA", 422)
+    return None
+
+
+def crear_transaccion(db: Session, usuario_id: UUID, datos: TransaccionCrearEntrada) -> Transaccion:
     try:
-        usuario = repository.bloquear_usuario(
-            db=db,
-            usuario_id=usuario_id,
-        )
-
-        if usuario is None:
-            raise DatosInvalidosError()
-
-        if not usuario.es_activo_usuario:
-            raise DatosInvalidosError()
-        # ----------------------------------------------------
-        # 1. ESTRUCTURA DEL MOVIMIENTO
-        # ----------------------------------------------------
-
-        validar_estructura(
-            tipo_transaccion=tipo_transaccion,
-            cuenta_id=cuenta_id,
-            cuenta_destino_id=cuenta_destino_id,
-            categoria_id=categoria_id,
-            subcategoria_id=subcategoria_id,
-        )
-
-        # ----------------------------------------------------
-        # 2. BLOQUEAR CUENTAS PARTICIPANTES
-        # ----------------------------------------------------
-
-        ids_cuentas = [cuenta_id]
-
-        if cuenta_destino_id is not None:
-            ids_cuentas.append(cuenta_destino_id)
-
-        cuentas = repository.bloquear_cuentas(
-            db=db,
-            usuario_id=usuario_id,
-            ids_cuentas=ids_cuentas,
-        )
-
-        cuenta = cuentas.get(cuenta_id)
-
-        if not cuenta:
+        repository.bloquear_usuario(db, usuario_id)
+        ids = [datos.cuenta_id]
+        if datos.cuenta_destino_id is not None:
+            ids.append(datos.cuenta_destino_id)
+        cuentas = repository.bloquear_cuentas(db, usuario_id, ids)
+        if len(cuentas) != len(set(ids)):
             raise CuentaNoEncontradaError()
-
-        cuenta_destino = None
-
-        if cuenta_destino_id is not None:
-            cuenta_destino = cuentas.get(
-                cuenta_destino_id
-            )
-
-            if not cuenta_destino:
-                # El contrato final usa CUENTA_NO_ENCONTRADA
-                # para cuenta principal o destino.
-                raise CuentaNoEncontradaError()
-
-        # ----------------------------------------------------
-        # 3. ESTADO DE CUENTAS
-        # ----------------------------------------------------
-
-        if not cuenta.es_activa_cuenta:
-            raise CuentaInactivaError()
-
-        if (
-            cuenta_destino is not None
-            and not cuenta_destino.es_activa_cuenta
-        ):
-            raise CuentaInactivaError()
-
-        # ----------------------------------------------------
-        # 4. TIPOS DE CUENTA
-        # ----------------------------------------------------
-
-        validar_tipo_cuenta(
-            tipo_transaccion=tipo_transaccion,
-            cuenta=cuenta,
-            cuenta_destino=cuenta_destino,
-        )
-
-        # ----------------------------------------------------
-        # 5. CATEGORÍA / SUBCATEGORÍA
-        # ----------------------------------------------------
-
-        if tipo_transaccion == TipoTransaccion.GASTO:
-
-            # validar_estructura ya garantizó que no sea None.
-            validar_clasificacion_gasto(
-                db=db,
-                usuario_id=usuario_id,
-                categoria_id=categoria_id,
-                subcategoria_id=subcategoria_id,
-            )
-
-        # ----------------------------------------------------
-        # 6. REGLAS FINANCIERAS
-        # ----------------------------------------------------
-
-        if tipo_transaccion == TipoTransaccion.GASTO:
-
-            validar_gasto(
-                db=db,
-                cuenta=cuenta,
-                monto=monto_transaccion,
-            )
-
-        elif (
-            tipo_transaccion
-            == TipoTransaccion.TRANSFERENCIA
-        ):
-
-            validar_transferencia(
-                db=db,
-                cuenta_origen=cuenta,
-                cuenta_destino=cuenta_destino,
-                monto=monto_transaccion,
-            )
-
-        # INGRESO no necesita comprobar fondos.
-
-        # ----------------------------------------------------
-        # 7. INSERT
-        # ----------------------------------------------------
-
+        # No calcular saldos ni fondos: fn_transaccion_validar_v11 usa la vista oficial.
+        # No enviar periodo_id, grupo_id, es_ingreso_reservado ni id_transaccion:
+        # el trigger fija esos valores de forma autoritativa.
         transaccion = Transaccion(
             usuario_id=usuario_id,
-            cuenta_id=cuenta_id,
-            tipo_transaccion=tipo_transaccion,
-            cuenta_destino_id=cuenta_destino_id,
-            categoria_id=categoria_id,
-            subcategoria_id=subcategoria_id,
-            monto_transaccion=monto_transaccion,
-            comentario_transaccion=comentario_transaccion,
+            cuenta_id=datos.cuenta_id,
+            cuenta_destino_id=datos.cuenta_destino_id,
+            tipo_transaccion=datos.tipo_transaccion,
+            categoria_id=datos.categoria_id,
+            subcategoria_id=datos.subcategoria_id,
+            monto_transaccion=datos.monto_transaccion,
+            monto_reduccion_deuda=datos.monto_reduccion_deuda,
+            fecha_operacion_transaccion=datos.fecha_operacion_transaccion,
+            comentario_transaccion=datos.comentario_transaccion,
+            referencia_transaccion=datos.referencia_transaccion,
         )
-
-        repository.agregar_transaccion(
-            db=db,
-            transaccion=transaccion,
-        )
-
-        # ----------------------------------------------------
-        # 8. COMMIT ÚNICO
-        # ----------------------------------------------------
-
+        repository.agregar_transaccion(db, transaccion)
         db.commit()
-
         db.refresh(transaccion)
-
         return transaccion
-
-    except (
-        CuentaNoEncontradaError,
-        CuentaInactivaError,
-        CategoriaNoEncontradaError,
-        CategoriaInactivaError,
-        SubcategoriaNoEncontradaError,
-        SubcategoriaInactivaError,
-        SaldoInsuficienteError,
-        LimiteCreditoExcedidoError,
-        PagoSuperaDeudaError,
-        DatosInvalidosError,
-    ):
+    except (IntegrityError, DBAPIError) as exc:
         db.rollback()
+        traducido = traducir_error_bd(exc)
+        if traducido is not None:
+            raise traducido from exc
         raise
-
-    except IntegrityError:
-        db.rollback()
-        raise DatosInvalidosError()
-
     except Exception:
         db.rollback()
         raise
 
 
-# ============================================================
-# OBTENER DETALLE
-# ============================================================
-
-def obtener_transaccion(
-    db: Session,
-    usuario_id: UUID,
-    id_transaccion: UUID,
-) -> Transaccion:
-
-    transaccion = repository.obtener_transaccion_por_id(
-        db=db,
-        usuario_id=usuario_id,
-        id_transaccion=id_transaccion,
-    )
-
-    if not transaccion:
+def obtener_transaccion(db: Session, usuario_id: UUID, id_transaccion: UUID) -> Transaccion:
+    transaccion = repository.obtener_transaccion_por_id(db, usuario_id, id_transaccion)
+    if transaccion is None:
         raise TransaccionNoEncontradaError()
-
     return transaccion
 
-
-# ============================================================
-# LISTAR
-# ============================================================
 
 def listar_transacciones(
     db: Session,
@@ -563,25 +119,6 @@ def listar_transacciones(
     limite: int,
     offset: int,
 ) -> tuple[list[Transaccion], int]:
-
-    # Si se proporciona cuenta_id, debe ser una cuenta propia.
-    # Puede estar activa o inactiva.
-    if cuenta_id is not None:
-
-        cuenta = repository.obtener_cuenta_propia(
-            db=db,
-            usuario_id=usuario_id,
-            id_cuenta=cuenta_id,
-        )
-
-        if not cuenta:
-            raise CuentaNoEncontradaError()
-
-    return repository.listar_transacciones(
-        db=db,
-        usuario_id=usuario_id,
-        tipo_transaccion=tipo_transaccion,
-        cuenta_id=cuenta_id,
-        limite=limite,
-        offset=offset,
-    )
+    if cuenta_id is not None and repository.obtener_cuenta_propia(db, usuario_id, cuenta_id) is None:
+        raise CuentaNoEncontradaError()
+    return repository.listar_transacciones(db, usuario_id, tipo_transaccion, cuenta_id, limite, offset)

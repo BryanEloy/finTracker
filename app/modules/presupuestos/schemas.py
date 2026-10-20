@@ -1,233 +1,75 @@
 from datetime import date, datetime
-from decimal import Decimal
-from enum import Enum
+from decimal import Decimal, InvalidOperation
+from typing import Literal
 from uuid import UUID
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    field_validator,
-    model_validator,
-)
-
-from app.modules.presupuestos.model import EstadoPresupuesto
-
-from app.modules.transacciones.schemas import TransaccionSalida
-
-
-# =========================================================
-# Funciones auxiliares de validación
-# =========================================================
-
-def validar_decimal_entrada(valor) -> Decimal:
-    """
-    Valida montos monetarios recibidos desde el cliente.
-
-    Reglas:
-    - Debe llegar como string.
-    - Debe tener máximo 2 decimales.
-    - No se redondea.
-    - Debe estar entre 0.01 y 9999999999.99.
-    """
-
-    if not isinstance(valor, str):
-        raise ValueError("El monto debe enviarse como texto decimal")
-
-    if not valor:
-        raise ValueError("Monto inválido")
-
-    partes = valor.split(".")
-
-    if len(partes) > 2:
-        raise ValueError("Monto inválido")
-
-    if not partes[0].isdigit():
-        raise ValueError("Monto inválido")
-
-    if len(partes) == 2:
-        if (
-            not partes[1].isdigit()
-            or len(partes[1]) == 0
-            or len(partes[1]) > 2
-        ):
-            raise ValueError("Monto inválido")
-
-    decimal = Decimal(valor)
-
-    if not decimal.is_finite():
-        raise ValueError("Monto inválido")
-
-    if decimal < Decimal("0.01"):
-        raise ValueError("Monto inválido")
-
-    if decimal > Decimal("9999999999.99"):
-        raise ValueError("Monto inválido")
-
-    return decimal
-
-
-# =========================================================
-# ENTRADA - CREACIÓN
-# =========================================================
-
-class DetallePresupuestoCrearEntrada(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    categoria_id: UUID
-
-    porcentaje_asignado_presupuesto: int = Field(
-        ge=1,
-        le=100,
-        strict=True,
-    )
-
-    porcentaje_alerta_presupuesto: int = Field(
-        default=80,
-        ge=1,
-        le=100,
-        strict=True,
-    )
-
+class GrupoDistribucionEntrada(BaseModel):
+    grupo_id: UUID
+    porcentaje_asignado_grupo: int = Field(ge=0, le=100)
+    porcentaje_alerta_grupo: int = Field(default=80, ge=1, le=100)
 
 class PresupuestoCrearEntrada(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    codigo_periodo: str = Field(min_length=1, max_length=50)
+    tipo_periodo: Literal["QUINCENAL", "SEMANAL", "MENSUAL", "PERSONALIZADO"]
+    fecha_inicio_periodo: date
+    fecha_fin_periodo: date
+    monto_total_presupuesto: Decimal
+    periodo_anterior_id: UUID | None = None
+    grupos: list[GrupoDistribucionEntrada] = Field(min_length=4, max_length=4)
 
-    fecha_fin_presupuesto: date
-
-    monto_limite_presupuesto: Decimal
-
-    detalles: list[DetallePresupuestoCrearEntrada] = Field(
-        min_length=1,
-        max_length=100,
-    )
-
-    @field_validator(
-        "monto_limite_presupuesto",
-        mode="before",
-    )
+    @field_validator("monto_total_presupuesto", mode="before")
     @classmethod
-    def validar_monto_limite(cls, valor):
-        return validar_decimal_entrada(valor)
+    def validar_monto(cls, valor):
+        if not isinstance(valor, str):
+            raise ValueError("El monto debe enviarse como texto decimal")
+        try:
+            numero = Decimal(valor)
+        except InvalidOperation as exc:
+            raise ValueError("Monto decimal inválido") from exc
+        if not numero.is_finite() or numero < 0 or numero > Decimal("9999999999.99") or numero.as_tuple().exponent < -2:
+            raise ValueError("Monto fuera de rango o con más de dos decimales")
+        return numero
 
     @model_validator(mode="after")
-    def validar_distribucion(self):
-        categorias = [
-            detalle.categoria_id
-            for detalle in self.detalles
-        ]
-
-        if len(categorias) != len(set(categorias)):
-            raise ValueError("Categorías repetidas")
-
-        suma_porcentajes = sum(
-            detalle.porcentaje_asignado_presupuesto
-            for detalle in self.detalles
-        )
-
-        if suma_porcentajes != 100:
-            raise ValueError(
-                "La distribución debe sumar exactamente 100"
-            )
-
+    def validar(self):
+        if not self.codigo_periodo.strip():
+            raise ValueError("El código no puede estar vacío")
+        if self.fecha_fin_periodo < self.fecha_inicio_periodo:
+            raise ValueError("La fecha final debe ser posterior o igual a la inicial")
+        if len({g.grupo_id for g in self.grupos}) != 4:
+            raise ValueError("Deben indicarse cuatro grupos distintos")
+        if sum(g.porcentaje_asignado_grupo for g in self.grupos) != 100:
+            raise ValueError("Los porcentajes deben sumar exactamente 100")
         return self
 
+class PresupuestoActualizarEntrada(BaseModel):
+    fecha_fin_periodo: date | None = None
+    monto_total_presupuesto: Decimal | None = None
+    @field_validator("monto_total_presupuesto", mode="before")
+    @classmethod
+    def validar_monto(cls, valor):
+        if valor is None: return None
+        return PresupuestoCrearEntrada.validar_monto(valor)
+    @model_validator(mode="after")
+    def no_vacio(self):
+        if self.fecha_fin_periodo is None and self.monto_total_presupuesto is None:
+            raise ValueError("Proporcione al menos un campo")
+        return self
 
-# =========================================================
-# ENTRADA - CIERRE
-# =========================================================
+class PorcentajeGrupoActualizarEntrada(BaseModel):
+    porcentaje_asignado_grupo: int = Field(ge=0, le=100)
 
-class AccionCierrePresupuesto(str, Enum):
-    FINALIZAR = "FINALIZAR"
-    CANCELAR = "CANCELAR"
-
-
-class PresupuestoCierreEntrada(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    accion: AccionCierrePresupuesto
-
-
-# =========================================================
-# SALIDAS - DETALLE DE DISTRIBUCIÓN
-# =========================================================
-
-class DetallePresupuestoSalida(BaseModel):
-    id_detalle_presupuesto: UUID
-    categoria_id: UUID
-
-    nombre_categoria: str
-
-    porcentaje_asignado_presupuesto: int
-    porcentaje_alerta_presupuesto: int
-
-    monto_limite_categoria: Decimal
-    monto_consumido_categoria: Decimal
-    monto_restante_categoria: Decimal
-    monto_excedido_categoria: Decimal
-
-    porcentaje_consumido_categoria: Decimal
-
-    indicador_categoria: str
-
-
-# =========================================================
-# SALIDA - RESUMEN DEL PRESUPUESTO
-# =========================================================
-
-class PresupuestoResumen(BaseModel):
-    id_presupuesto: UUID
-
-    fecha_inicio_presupuesto: datetime
-    fecha_fin_presupuesto: date
-    fecha_cierre_presupuesto: datetime | None
-
-    estado_presupuesto: EstadoPresupuesto
-
-    monto_limite_presupuesto: Decimal
-
-    monto_consumido_presupuesto: Decimal
-    monto_restante_presupuesto: Decimal
-    monto_excedido_presupuesto: Decimal
-
-    porcentaje_consumido_presupuesto: Decimal
-
-    indicador_presupuesto: str
-
-    periodo_vencido: bool
-
-
-# =========================================================
-# SALIDA - DETALLE COMPLETO
-# =========================================================
-
-class PresupuestoDetalle(BaseModel):
-    presupuesto: PresupuestoResumen
-
-    monto_consumido_presupuestado: Decimal
-    monto_consumido_no_presupuestado: Decimal
-
-    detalles: list[DetallePresupuestoSalida]
-
-
-# =========================================================
-# SALIDA - LISTADO
-# =========================================================
-
-class PresupuestoListaSalida(BaseModel):
-    presupuestos: list[PresupuestoResumen]
-
-    total: int
-    limite: int
-    offset: int
-
-# =========================================================
-# SALIDA - GASTOS DEL PRESUPUESTO
-# =========================================================
-
-class PresupuestoGastosSalida(BaseModel):
-    gastos: list[TransaccionSalida]
-
-    total: int
-    limite: int
-    offset: int
+class PresupuestoSalida(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id_periodo: UUID
+    usuario_id: UUID
+    codigo_periodo: str
+    tipo_periodo: str
+    periodo_anterior_id: UUID | None
+    fecha_inicio_periodo: date
+    fecha_fin_periodo: date
+    fecha_creacion_periodo: datetime
+    fecha_cierre_periodo: datetime | None
+    estado_periodo: str
+    monto_total_presupuesto: Decimal
