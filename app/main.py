@@ -10,6 +10,7 @@ from app.modules.transacciones.router import (
 from app.modules.metas.router import router as metas_router
 from app.modules.presupuestos.router import router as presupuestos_router
 from app.modules.grupos.router import router as grupos_router
+from app.modules.analitica.integration import router as analitica_router
 
 app = FastAPI(
     title="FinTrack API",
@@ -56,6 +57,8 @@ app.include_router(
     grupos_router,
     prefix="/api/v1",
 )
+
+app.include_router(analitica_router)
 
 @app.get("/", tags=["Sistema"])
 def health_check():

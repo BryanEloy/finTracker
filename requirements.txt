@@ -10,3 +10,7 @@ email-validator
 python-multipart
 tzdata
 argon2-cffi
+numpy
+pandas
+scipy
+scikit-learn
