@@ -96,7 +96,7 @@ class MetaCrearEntrada(BaseModel):
         extra="forbid",
     )
 
-    cuenta_id: UUID
+    cuenta_id: UUID | None = None
 
     nombre_meta: str
 
@@ -217,7 +217,7 @@ class MetaCierreEntrada(BaseModel):
 
 class MetaSalida(BaseModel):
     id_meta: UUID
-    cuenta_id: UUID
+    cuenta_id: UUID | None
 
     nombre_meta: str
     descripcion_meta: str | None
@@ -262,9 +262,16 @@ class ResumenCuentaMeta(BaseModel):
     deficit_reservas_cuenta: Decimal
 
 
+class ReservaCuentaMeta(BaseModel):
+    cuenta_id: UUID
+    monto_actual_cuenta_meta: Decimal
+    reserva_cuenta_en_meta: Decimal
+
+
 class MetaDetalleSalida(BaseModel):
     meta: MetaSalida
-    resumen_cuenta: ResumenCuentaMeta
+    resumen_cuenta: ResumenCuentaMeta | None = None
+    reservas_por_cuenta: list["ReservaCuentaMeta"] = Field(default_factory=list)
 
 
 # ============================================================
@@ -275,6 +282,8 @@ class AsignacionCrearEntrada(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+
+    cuenta_id: UUID
 
     tipo_asignacion: TipoAsignacion
 
@@ -309,6 +318,8 @@ class AsignacionCrearEntrada(BaseModel):
 class AsignacionSalida(BaseModel):
     id_asignacion: UUID
     meta_id: UUID
+    cuenta_id: UUID
+    usuario_id: UUID
 
     tipo_asignacion: TipoAsignacion
     monto_asignacion: Decimal

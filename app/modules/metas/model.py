@@ -51,7 +51,7 @@ class Meta(Base):
 
     cuenta_id = Column(
         UUID(as_uuid=True),
-        nullable=False,
+        nullable=True,
     )
 
     nombre_meta = Column(
@@ -108,6 +108,9 @@ class AsignacionMeta(Base):
         primary_key=True,
         server_default=text("gen_random_uuid()"),
     )
+
+    usuario_id = Column(UUID(as_uuid=True), nullable=False)
+    cuenta_id = Column(UUID(as_uuid=True), ForeignKey("cuenta.id_cuenta", ondelete="RESTRICT"), nullable=False)
 
     meta_id = Column(
         UUID(as_uuid=True),

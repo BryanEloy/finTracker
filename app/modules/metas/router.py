@@ -279,6 +279,7 @@ def crear_asignacion(
             db=db,
             usuario_id=usuario.id_usuario,
             id_meta=id_meta,
+            cuenta_id=datos.cuenta_id,
             tipo_asignacion=datos.tipo_asignacion,
             monto_asignacion=datos.monto_asignacion,
             comentario_asignacion=
@@ -308,6 +309,9 @@ def crear_asignacion(
             status_code=409,
             detail="META_VENCIDA",
         )
+
+    except service.CuentaNoEncontradaError:
+        raise HTTPException(status_code=404, detail="CUENTA_NO_ENCONTRADA")
 
     except service.CuentaInactivaError:
         raise HTTPException(

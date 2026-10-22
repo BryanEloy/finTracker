@@ -2,868 +2,184 @@ from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
 from zoneinfo import ZoneInfo
-
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-
 from app.modules.metas import repository
-from app.modules.metas.model import (
-    AsignacionMeta,
-    EstadoMeta,
-    Meta,
-    TipoAsignacion,
-)
+from app.modules.metas.model import Meta, AsignacionMeta, EstadoMeta, TipoAsignacion
 from app.modules.metas.schemas import AccionCierre
 
-
 ZONA_NEGOCIO = ZoneInfo("America/Mexico_City")
-
 CERO = Decimal("0.00")
-CIEN = Decimal("100.00")
 
+class MetaNoEncontradaError(Exception): pass
+class CuentaNoEncontradaError(Exception): pass
+class CuentaInactivaError(Exception): pass
+class NombreMetaDuplicadoError(Exception): pass
+class MetaCerradaError(Exception): pass
+class MetaVencidaError(Exception): pass
+class MetaNoFinalizableError(Exception): pass
+class FondosLibresInsuficientesError(Exception): pass
+class AporteSuperaObjetivoError(Exception): pass
+class RetiroSuperaAcumuladoError(Exception): pass
+class DatosInvalidosError(Exception): pass
+class UsuarioDesactivadoError(Exception): pass
 
-# ============================================================
-# EXCEPCIONES
-# ============================================================
-
-class MetaNoEncontradaError(Exception):
-    pass
-
-
-class CuentaNoEncontradaError(Exception):
-    pass
-
-
-class CuentaInactivaError(Exception):
-    pass
-
-
-class NombreMetaDuplicadoError(Exception):
-    pass
-
-
-class MetaCerradaError(Exception):
-    pass
-
-
-class MetaVencidaError(Exception):
-    pass
-
-
-class MetaNoFinalizableError(Exception):
-    pass
-
-
-class FondosLibresInsuficientesError(Exception):
-    pass
-
-
-class AporteSuperaObjetivoError(Exception):
-    pass
-
-
-class RetiroSuperaAcumuladoError(Exception):
-    pass
-
-
-class DatosInvalidosError(Exception):
-    pass
-
-class UsuarioDesactivadoError(Exception):
-    pass
-
-
-# ============================================================
-# FECHA DE NEGOCIO
-# ============================================================
 
 def hoy_negocio():
     return datetime.now(ZONA_NEGOCIO).date()
 
 
-# ============================================================
-# AUXILIARES
-# ============================================================
-
-def obtener_valor_enum(valor):
+def valor_enum(valor):
     return getattr(valor, "value", valor)
 
 
-def es_cuenta_crediticia(cuenta) -> bool:
-    return obtener_valor_enum(
-        cuenta.tipo_cuenta
-    ) == "CREDITO"
+def activa(meta):
+    return valor_enum(meta.estado_meta) == "ACTIVA"
 
 
-def esta_activa_cuenta(cuenta) -> bool:
-    return bool(cuenta.es_activa_cuenta)
+def centavos(valor):
+    return Decimal(valor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-def esta_activa_meta(meta: Meta) -> bool:
-    return (
-        obtener_valor_enum(meta.estado_meta)
-        == EstadoMeta.ACTIVA.value
-    )
+def salida_meta(db, meta):
+    resumen = repository.obtener_resumen_meta(db, meta.usuario_id, meta.id_meta)
+    if resumen is None: raise RuntimeError("Resumen de meta V1.1 no disponible")
+    return dict(resumen)
 
 
-def meta_esta_vencida(meta: Meta) -> bool:
-    return (
-        esta_activa_meta(meta)
-        and hoy_negocio() > meta.fecha_limite_meta
-    )
+def validar_cuenta(cuenta, exigir_activa=True):
+    if cuenta is None: raise CuentaNoEncontradaError()
+    if valor_enum(cuenta.tipo_cuenta) == "CREDITO": raise DatosInvalidosError()
+    if exigir_activa and not cuenta.es_activa_cuenta: raise CuentaInactivaError()
 
 
-def decimal_dos(valor: Decimal) -> Decimal:
-    return Decimal(valor).quantize(
-        Decimal("0.01"),
-        rounding=ROUND_HALF_UP,
-    )
+def manejar_integridad(error):
+    nombre = getattr(getattr(error.orig, "diag", None), "constraint_name", "")
+    if nombre == "uq_meta_usuario_nombre_ci": raise NombreMetaDuplicadoError() from error
+    raise DatosInvalidosError() from error
 
 
-# ============================================================
-# CÁLCULOS DE META
-# ============================================================
-
-def construir_meta_salida(
-    db: Session,
-    meta: Meta,
-):
-    acumulado = repository.calcular_acumulado_meta(
-        db,
-        meta.id_meta,
-    )
-
-    objetivo = Decimal(
-        meta.monto_objetivo_meta
-    )
-
-    faltante = max(
-        objetivo - acumulado,
-        CERO,
-    )
-
-    porcentaje = (
-        acumulado / objetivo
-    ) * Decimal("100")
-
-    porcentaje = decimal_dos(porcentaje)
-
-    reserva_vigente = (
-        acumulado
-        if esta_activa_meta(meta)
-        else CERO
-    )
-
-    return {
-        "id_meta": meta.id_meta,
-        "cuenta_id": meta.cuenta_id,
-        "nombre_meta": meta.nombre_meta,
-        "descripcion_meta": meta.descripcion_meta,
-
-        "monto_objetivo_meta":
-            decimal_dos(objetivo),
-
-        "fecha_limite_meta":
-            meta.fecha_limite_meta,
-
-        "fecha_creacion_meta":
-            meta.fecha_creacion_meta,
-
-        "fecha_cierre_meta":
-            meta.fecha_cierre_meta,
-
-        "estado_meta":
-            meta.estado_meta,
-
-        "monto_actual_meta":
-            decimal_dos(acumulado),
-
-        "monto_faltante_meta":
-            decimal_dos(faltante),
-
-        "porcentaje_avance_meta":
-            porcentaje,
-
-        "reserva_vigente_meta":
-            decimal_dos(reserva_vigente),
-
-        "plazo_vencido":
-            meta_esta_vencida(meta),
-    }
-
-
-# ============================================================
-# RESUMEN DE CUENTA
-# ============================================================
-
-def construir_resumen_cuenta(
-    db: Session,
-    cuenta,
-):
-    saldo_actual = (
-        repository.calcular_saldo_real_cuenta(
-            db,
-            cuenta,
-        )
-    )
-
-    reserva_total = (
-        repository.calcular_reserva_total_cuenta(
-            db,
-            cuenta.usuario_id,
-            cuenta.id_cuenta,
-        )
-    )
-
-    dinero_libre = (
-        saldo_actual - reserva_total
-    )
-
-    disponible = max(
-        dinero_libre,
-        CERO,
-    )
-
-    deficit = max(
-        -dinero_libre,
-        CERO,
-    )
-
-    return {
-        "saldo_actual_cuenta":
-            decimal_dos(saldo_actual),
-
-        "reserva_total_cuenta":
-            decimal_dos(reserva_total),
-
-        "dinero_libre_cuenta":
-            decimal_dos(dinero_libre),
-
-        "disponible_para_aportar":
-            decimal_dos(disponible),
-
-        "deficit_reservas_cuenta":
-            decimal_dos(deficit),
-    }
-
-
-# ============================================================
-# CREAR META
-# ============================================================
-
-def crear_meta(
-    db: Session,
-    usuario_id: UUID,
-    cuenta_id: UUID,
-    nombre_meta: str,
-    monto_objetivo_meta: Decimal,
-    fecha_limite_meta,
-    descripcion_meta: str | None,
-):
+def crear_meta(db: Session, usuario_id: UUID, cuenta_id: UUID | None, nombre_meta: str, monto_objetivo_meta: Decimal, fecha_limite_meta, descripcion_meta: str | None):
     try:
-        cuenta = repository.obtener_cuenta_propia(
-            db,
-            usuario_id,
-            cuenta_id,
-        )
-
-        if cuenta is None:
-            raise CuentaNoEncontradaError()
-
-        if not esta_activa_cuenta(cuenta):
-            raise CuentaInactivaError()
-
-        if es_cuenta_crediticia(cuenta):
-            raise DatosInvalidosError()
-
-        if fecha_limite_meta < hoy_negocio():
-            raise DatosInvalidosError()
-
-        if repository.existe_nombre_meta(
-            db,
-            usuario_id,
-            cuenta_id,
-            nombre_meta,
-        ):
-            raise NombreMetaDuplicadoError()
-
-        meta = Meta(
-            usuario_id=usuario_id,
-            cuenta_id=cuenta_id,
-            nombre_meta=nombre_meta,
-            monto_objetivo_meta=monto_objetivo_meta,
-            fecha_limite_meta=fecha_limite_meta,
-            descripcion_meta=descripcion_meta,
-        )
-
-        repository.agregar_meta(
-            db,
-            meta,
-        )
-
+        usuario = repository.bloquear_usuario(db, usuario_id)
+        if usuario is None or not usuario.es_activo_usuario: raise UsuarioDesactivadoError()
+        if fecha_limite_meta < hoy_negocio(): raise DatosInvalidosError()
+        if cuenta_id is not None:
+            cuenta = repository.obtener_cuenta_propia(db, usuario_id, cuenta_id)
+            validar_cuenta(cuenta)
+        if repository.existe_nombre_meta(db, usuario_id, nombre_meta): raise NombreMetaDuplicadoError()
+        meta = Meta(usuario_id=usuario_id, cuenta_id=cuenta_id, nombre_meta=nombre_meta, monto_objetivo_meta=monto_objetivo_meta, fecha_limite_meta=fecha_limite_meta, descripcion_meta=descripcion_meta)
+        repository.agregar_meta(db, meta)
         db.commit()
-        db.refresh(meta)
-
-        return construir_meta_salida(
-            db,
-            meta,
-        )
-
-    except (
-        CuentaNoEncontradaError,
-        CuentaInactivaError,
-        NombreMetaDuplicadoError,
-        DatosInvalidosError,
-    ):
-        db.rollback()
-        raise
-
-    except IntegrityError as error:
-        db.rollback()
-
-        nombre_constraint = getattr(
-            getattr(error.orig, "diag", None),
-            "constraint_name",
-            None,
-        )
-
-        if (
-            nombre_constraint
-            == "uq_meta_usuario_cuenta_nombre"
-        ):
-            raise NombreMetaDuplicadoError()
-
-        raise DatosInvalidosError()
-    
+        return salida_meta(db, meta)
+    except IntegrityError as exc:
+        db.rollback(); manejar_integridad(exc)
     except Exception:
-            db.rollback()
-            raise
+        db.rollback(); raise
 
 
-# ============================================================
-# LISTAR METAS
-# ============================================================
-
-def listar_metas(
-    db: Session,
-    usuario_id: UUID,
-    estado: EstadoMeta | None,
-    cuenta_id: UUID | None,
-    limite: int,
-    offset: int,
-):
-    if cuenta_id is not None:
-        cuenta = repository.obtener_cuenta_propia(
-            db,
-            usuario_id,
-            cuenta_id,
-        )
-
-        if cuenta is None:
-            raise CuentaNoEncontradaError()
-
-    metas, total = repository.listar_metas(
-        db,
-        usuario_id,
-        estado,
-        cuenta_id,
-        limite,
-        offset,
-    )
-
-    resultados = [
-        construir_meta_salida(db, meta)
-        for meta in metas
-    ]
-
-    return resultados, total
+def listar_metas(db, usuario_id, estado, cuenta_id, limite, offset):
+    if cuenta_id is not None and repository.obtener_cuenta_propia(db, usuario_id, cuenta_id) is None: raise CuentaNoEncontradaError()
+    metas, total = repository.listar_metas(db, usuario_id, estado, cuenta_id, limite, offset)
+    return [salida_meta(db, m) for m in metas], total
 
 
-# ============================================================
-# DETALLE
-# ============================================================
-
-def obtener_detalle_meta(
-    db: Session,
-    usuario_id: UUID,
-    id_meta: UUID,
-):
-    meta = repository.obtener_meta_por_id(
-        db,
-        usuario_id,
-        id_meta,
-    )
-
-    if meta is None:
-        raise MetaNoEncontradaError()
-
-    cuenta = repository.obtener_cuenta_propia(
-        db,
-        usuario_id,
-        meta.cuenta_id,
-    )
-
-    # La FK debería hacer imposible este caso.
-    if cuenta is None:
-        raise MetaNoEncontradaError()
-
-    return {
-        "meta": construir_meta_salida(
-            db,
-            meta,
-        ),
-        "resumen_cuenta":
-            construir_resumen_cuenta(
-                db,
-                cuenta,
-            ),
-    }
+def obtener_detalle_meta(db, usuario_id, id_meta):
+    meta = repository.obtener_meta_por_id(db, usuario_id, id_meta)
+    if meta is None: raise MetaNoEncontradaError()
+    cuenta = repository.obtener_cuenta_propia(db, usuario_id, meta.cuenta_id) if meta.cuenta_id else None
+    estado = repository.obtener_estado_financiero_cuenta(db, usuario_id, cuenta.id_cuenta) if cuenta else None
+    resumen_cuenta = None
+    if estado is not None:
+        saldo = Decimal(estado["saldo_actual_cuenta"] or 0)
+        reserva = Decimal(estado["reserva_total_cuenta"] or 0)
+        libre = Decimal(estado["dinero_libre_cuenta"] or 0)
+        resumen_cuenta = {"saldo_actual_cuenta":saldo,"reserva_total_cuenta":reserva,"dinero_libre_cuenta":libre,"disponible_para_aportar":max(libre,CERO),"deficit_reservas_cuenta":max(-libre,CERO)}
+    return {"meta":salida_meta(db,meta), "resumen_cuenta":resumen_cuenta, "reservas_por_cuenta":repository.reservas_por_meta(db,usuario_id,id_meta)}
 
 
-# ============================================================
-# EDITAR META
-# ============================================================
-
-def actualizar_meta(
-    db: Session,
-    usuario_id: UUID,
-    id_meta: UUID,
-    datos,
-):
+def actualizar_meta(db, usuario_id, id_meta, datos):
     try:
-        meta = repository.bloquear_meta(
-            db,
-            usuario_id,
-            id_meta,
-        )
-
-        if meta is None:
-            raise MetaNoEncontradaError()
-
-        if not esta_activa_meta(meta):
-            raise MetaCerradaError()
-
-        campos = datos.model_fields_set
-
-        if "nombre_meta" in campos:
-            if repository.existe_nombre_meta(
-                db,
-                usuario_id,
-                meta.cuenta_id,
-                datos.nombre_meta,
-                excluir_id_meta=meta.id_meta,
-            ):
-                raise NombreMetaDuplicadoError()
-
+        usuario = repository.bloquear_usuario(db, usuario_id)
+        if usuario is None or not usuario.es_activo_usuario: raise UsuarioDesactivadoError()
+        meta = repository.bloquear_meta(db, usuario_id, id_meta)
+        if meta is None: raise MetaNoEncontradaError()
+        if not activa(meta): raise MetaCerradaError()
+        if "nombre_meta" in datos.model_fields_set:
+            if repository.existe_nombre_meta(db,usuario_id,datos.nombre_meta,meta.id_meta): raise NombreMetaDuplicadoError()
             meta.nombre_meta = datos.nombre_meta
-
-        if "descripcion_meta" in campos:
-            meta.descripcion_meta = (
-                datos.descripcion_meta
-            )
-
-        repository.actualizar_meta(
-            db,
-            meta,
-        )
-
+        if "descripcion_meta" in datos.model_fields_set: meta.descripcion_meta = datos.descripcion_meta
+        repository.actualizar_meta(db,meta)
         db.commit()
-        db.refresh(meta)
-
-        return construir_meta_salida(
-            db,
-            meta,
-        )
-
-    except (
-        MetaNoEncontradaError,
-        MetaCerradaError,
-        NombreMetaDuplicadoError,
-    ):
-        db.rollback()
-        raise
-
-    except IntegrityError as error:
-        db.rollback()
-
-        nombre_constraint = getattr(
-            getattr(error.orig, "diag", None),
-            "constraint_name",
-            None,
-        )
-
-        if (
-            nombre_constraint
-            == "uq_meta_usuario_cuenta_nombre"
-        ):
-            raise NombreMetaDuplicadoError()
-
-        raise DatosInvalidosError()
-
+        return salida_meta(db,meta)
+    except IntegrityError as exc:
+        db.rollback(); manejar_integridad(exc)
     except Exception:
-        db.rollback()
-        raise
+        db.rollback(); raise
 
 
-# ============================================================
-# CERRAR META
-# ============================================================
-
-def cerrar_meta(
-    db: Session,
-    usuario_id: UUID,
-    id_meta: UUID,
-    accion: AccionCierre,
-):
+def cerrar_meta(db, usuario_id, id_meta, accion):
     try:
-        meta = repository.bloquear_meta(
-            db,
-            usuario_id,
-            id_meta,
-        )
-
-        if meta is None:
-            raise MetaNoEncontradaError()
-
-        estado_actual = obtener_valor_enum(
-            meta.estado_meta
-        )
-
-        # ----------------------------------------------------
-        # IDEMPOTENCIA
-        # ----------------------------------------------------
-
-        if (
-            accion == AccionCierre.CANCELAR
-            and estado_actual
-            == EstadoMeta.CANCELADA.value
-        ):
-            db.commit()
-
-            return construir_meta_salida(
-                db,
-                meta,
-            )
-
-        if (
-            accion == AccionCierre.FINALIZAR
-            and estado_actual
-            in (
-                EstadoMeta.ALCANZADA.value,
-                EstadoMeta.NO_ALCANZADA.value,
-            )
-        ):
-            db.commit()
-
-            return construir_meta_salida(
-                db,
-                meta,
-            )
-
-        if estado_actual != EstadoMeta.ACTIVA.value:
-            raise MetaCerradaError()
-
-        acumulado = (
-            repository.calcular_acumulado_meta(
-                db,
-                meta.id_meta,
-            )
-        )
-
-        objetivo = Decimal(
-            meta.monto_objetivo_meta
-        )
-
-        # ----------------------------------------------------
-        # CANCELAR
-        # ----------------------------------------------------
-
+        usuario = repository.bloquear_usuario(db, usuario_id)
+        if usuario is None or not usuario.es_activo_usuario: raise UsuarioDesactivadoError()
+        meta = repository.bloquear_meta(db, usuario_id, id_meta)
+        if meta is None: raise MetaNoEncontradaError()
+        estado = valor_enum(meta.estado_meta)
+        if accion == AccionCierre.CANCELAR and estado == "CANCELADA":
+            db.commit(); return salida_meta(db,meta)
+        if accion == AccionCierre.FINALIZAR and estado in ("ALCANZADA","NO_ALCANZADA"):
+            db.commit(); return salida_meta(db,meta)
+        if estado != "ACTIVA": raise MetaCerradaError()
+        acumulado = repository.calcular_acumulado_meta(db,id_meta)
         if accion == AccionCierre.CANCELAR:
-            meta.estado_meta = (
-                EstadoMeta.CANCELADA
-            )
-
-        # ----------------------------------------------------
-        # FINALIZAR
-        # ----------------------------------------------------
-
+            meta.estado_meta = EstadoMeta.CANCELADA
         elif accion == AccionCierre.FINALIZAR:
-
-            if acumulado == objetivo:
-                meta.estado_meta = (
-                    EstadoMeta.ALCANZADA
-                )
-
-            elif (
-                acumulado < objetivo
-                and hoy_negocio()
-                > meta.fecha_limite_meta
-            ):
-                meta.estado_meta = (
-                    EstadoMeta.NO_ALCANZADA
-                )
-
-            else:
-                raise MetaNoFinalizableError()
-
-        else:
-            raise DatosInvalidosError()
-
-        meta.fecha_cierre_meta = datetime.now(
-            ZONA_NEGOCIO
-        )
-
-        repository.actualizar_meta(
-            db,
-            meta,
-        )
-
+            if acumulado == Decimal(meta.monto_objetivo_meta): meta.estado_meta = EstadoMeta.ALCANZADA
+            elif acumulado < Decimal(meta.monto_objetivo_meta) and hoy_negocio() > meta.fecha_limite_meta: meta.estado_meta = EstadoMeta.NO_ALCANZADA
+            else: raise MetaNoFinalizableError()
+        else: raise DatosInvalidosError()
+        meta.fecha_cierre_meta = datetime.now(ZONA_NEGOCIO)
+        repository.actualizar_meta(db,meta)
         db.commit()
-        db.refresh(meta)
-
-        return construir_meta_salida(
-            db,
-            meta,
-        )
-
-    except (
-        MetaNoEncontradaError,
-        MetaCerradaError,
-        MetaNoFinalizableError,
-        DatosInvalidosError,
-    ):
-        db.rollback()
-        raise
-
+        return salida_meta(db,meta)
     except Exception:
-        db.rollback()
-        raise
+        db.rollback(); raise
 
 
-# ============================================================
-# CREAR ASIGNACIÓN
-# ============================================================
-
-def crear_asignacion(
-    db: Session,
-    usuario_id: UUID,
-    id_meta: UUID,
-    tipo_asignacion: TipoAsignacion,
-    monto_asignacion: Decimal,
-    comentario_asignacion: str | None,
-):
+def crear_asignacion(db, usuario_id, id_meta, cuenta_id, tipo_asignacion, monto_asignacion, comentario_asignacion):
     try:
-        # ----------------------------------------------------
-        # 1. BLOQUEAR USUARIO
-        # ----------------------------------------------------
-
-        usuario = repository.bloquear_usuario(
-            db,
-            usuario_id,
-        )
-
-        if (
-            usuario is None
-            or not usuario.es_activo_usuario
-        ):
-            # Normalmente la dependencia JWT ya lo detectó.
-            # Esta comprobación protege contra concurrencia.
-            raise UsuarioDesactivadoError()
-
-        # ----------------------------------------------------
-        # 2. Localizar meta para conocer cuenta
-        # ----------------------------------------------------
-
-        meta_previa = repository.obtener_meta_por_id(
-            db,
-            usuario_id,
-            id_meta,
-        )
-
-        if meta_previa is None:
-            raise MetaNoEncontradaError()
-
-        # ----------------------------------------------------
-        # 3. BLOQUEAR CUENTA
-        # ----------------------------------------------------
-
-        cuenta = repository.bloquear_cuenta(
-            db,
-            usuario_id,
-            meta_previa.cuenta_id,
-        )
-
-        if cuenta is None:
-            raise MetaNoEncontradaError()
-
-        # ----------------------------------------------------
-        # 4. BLOQUEAR META
-        # ----------------------------------------------------
-
-        meta = repository.bloquear_meta(
-            db,
-            usuario_id,
-            id_meta,
-        )
-
-        if meta is None:
-            raise MetaNoEncontradaError()
-
-        # ----------------------------------------------------
-        # 5. ESTADO Y PLAZO
-        # ----------------------------------------------------
-
-        if not esta_activa_meta(meta):
-            raise MetaCerradaError()
-
-        if hoy_negocio() > meta.fecha_limite_meta:
-            raise MetaVencidaError()
-
-        # ----------------------------------------------------
-        # 6. RECALCULAR ACUMULADO
-        # ----------------------------------------------------
-
-        acumulado = (
-            repository.calcular_acumulado_meta(
-                db,
-                meta.id_meta,
-            )
-        )
-
-        objetivo = Decimal(
-            meta.monto_objetivo_meta
-        )
-
-        # ----------------------------------------------------
-        # 7. APORTE
-        # ----------------------------------------------------
-
+        usuario = repository.bloquear_usuario(db, usuario_id)
+        if usuario is None or not usuario.es_activo_usuario: raise UsuarioDesactivadoError()
+        # Bloqueo de cuenta antes de meta, compatible con el orden de operaciones V1.1.
+        cuenta = repository.bloquear_cuenta(db, usuario_id, cuenta_id)
+        if cuenta is None: raise CuentaNoEncontradaError()
+        meta = repository.bloquear_meta(db, usuario_id, id_meta)
+        if meta is None: raise MetaNoEncontradaError()
+        if not activa(meta): raise MetaCerradaError()
+        if hoy_negocio() > meta.fecha_limite_meta: raise MetaVencidaError()
+        if valor_enum(cuenta.tipo_cuenta) == "CREDITO": raise DatosInvalidosError()
+        acumulado = repository.calcular_acumulado_meta(db,id_meta)
         if tipo_asignacion == TipoAsignacion.APORTE:
-
-            if not esta_activa_cuenta(cuenta):
-                raise CuentaInactivaError()
-
-            faltante = objetivo - acumulado
-
-            if monto_asignacion > faltante:
-                raise AporteSuperaObjetivoError()
-
-            # IMPORTANTE:
-            # Se calcula después de los bloqueos.
-            saldo_real = (
-                repository.calcular_saldo_real_cuenta(
-                    db,
-                    cuenta,
-                )
-            )
-
-            reserva_total = (
-                repository
-                .calcular_reserva_total_cuenta(
-                    db,
-                    usuario_id,
-                    cuenta.id_cuenta,
-                )
-            )
-
-            disponible = max(
-                saldo_real - reserva_total,
-                CERO,
-            )
-
-            if monto_asignacion > disponible:
-                raise FondosLibresInsuficientesError()
-
-        # ----------------------------------------------------
-        # 8. RETIRO
-        # ----------------------------------------------------
-
+            if not cuenta.es_activa_cuenta: raise CuentaInactivaError()
+            if monto_asignacion > Decimal(meta.monto_objetivo_meta) - acumulado: raise AporteSuperaObjetivoError()
+            estado = repository.obtener_estado_financiero_cuenta(db,usuario_id,cuenta_id)
+            if estado is None or estado["dinero_libre_cuenta"] is None: raise RuntimeError("Estado financiero no disponible")
+            if monto_asignacion > max(Decimal(estado["dinero_libre_cuenta"]), CERO): raise FondosLibresInsuficientesError()
         elif tipo_asignacion == TipoAsignacion.RETIRO:
-
-            if monto_asignacion > acumulado:
-                raise RetiroSuperaAcumuladoError()
-
-            # Un retiro NO exige:
-            # - cuenta activa
-            # - saldo real suficiente
-
-        else:
-            raise DatosInvalidosError()
-
-        # ----------------------------------------------------
-        # 9. INSERT
-        # ----------------------------------------------------
-
-        asignacion = AsignacionMeta(
-            meta_id=meta.id_meta,
-            tipo_asignacion=tipo_asignacion,
-            monto_asignacion=monto_asignacion,
-            comentario_asignacion=
-                comentario_asignacion,
-        )
-
-        repository.agregar_asignacion(
-            db,
-            asignacion,
-        )
-
-        # ----------------------------------------------------
-        # 10. COMMIT
-        # ----------------------------------------------------
-
+            reserva = repository.reserva_cuenta_en_meta(db,usuario_id,id_meta,cuenta_id)
+            if monto_asignacion > reserva: raise RetiroSuperaAcumuladoError()
+        else: raise DatosInvalidosError()
+        asignacion = AsignacionMeta(meta_id=id_meta,usuario_id=usuario_id,cuenta_id=cuenta_id,tipo_asignacion=tipo_asignacion,monto_asignacion=monto_asignacion,comentario_asignacion=comentario_asignacion)
+        repository.agregar_asignacion(db,asignacion)
         db.commit()
         db.refresh(asignacion)
-
         return asignacion
-
-    except (
-        UsuarioDesactivadoError,
-        MetaNoEncontradaError,
-        MetaCerradaError,
-        MetaVencidaError,
-        CuentaInactivaError,
-        FondosLibresInsuficientesError,
-        AporteSuperaObjetivoError,
-        RetiroSuperaAcumuladoError,
-        DatosInvalidosError,
-    ):
-        db.rollback()
-        raise
-
-    except IntegrityError:
-        db.rollback()
-        raise DatosInvalidosError()
-
+    except IntegrityError as exc:
+        db.rollback(); raise DatosInvalidosError() from exc
     except Exception:
-        db.rollback()
-        raise
+        db.rollback(); raise
 
 
-# ============================================================
-# LISTAR ASIGNACIONES
-# ============================================================
-
-def listar_asignaciones(
-    db: Session,
-    usuario_id: UUID,
-    id_meta: UUID,
-    tipo_asignacion: TipoAsignacion | None,
-    limite: int,
-    offset: int,
-):
-    meta = repository.obtener_meta_por_id(
-        db,
-        usuario_id,
-        id_meta,
-    )
-
-    if meta is None:
-        raise MetaNoEncontradaError()
-
-    return repository.listar_asignaciones(
-        db,
-        id_meta,
-        tipo_asignacion,
-        limite,
-        offset,
-    )
+def listar_asignaciones(db, usuario_id, id_meta, tipo_asignacion, limite, offset):
+    if repository.obtener_meta_por_id(db,usuario_id,id_meta) is None: raise MetaNoEncontradaError()
+    return repository.listar_asignaciones(db,id_meta,tipo_asignacion,limite,offset)
