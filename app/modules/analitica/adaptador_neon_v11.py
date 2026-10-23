@@ -253,7 +253,9 @@ def guardar_prediccion(conn, resultado, contexto) -> UUID | None:
     proyección determinista ni estados insuficientes. El UUID solo se devuelve
     después de COMMIT exitoso. ID/fecha de generación se obtienen de PostgreSQL.
     """
-    from fintrack_v1_1_softcomputing_engine import construir_registro_prediccion
+    from app.modules.analitica.fintrack_v1_1_softcomputing_engine import (
+        construir_registro_prediccion,
+    )
     registro = construir_registro_prediccion(resultado, contexto)
     if registro is None:
         return None

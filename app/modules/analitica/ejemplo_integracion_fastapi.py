@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from uuid import UUID
@@ -162,11 +163,18 @@ def crear_router(
                 "Falta política explícita de origen y cobertura del backend."
             )
 
+        from datetime import timedelta
+
+        fecha_corte = snapshot["fecha_corte_datos"]
+
         contexto = ContextoAnalitico(
             usuario_id=uid,
-            fecha_corte_datos=snapshot["fecha_corte_datos"],
+            fecha_corte_datos=fecha_corte,
             origen_datos=politica["origen_datos"],
-            fecha_generacion=datetime.now(timezone.utc),
+            fecha_generacion=max(
+                datetime.now(timezone.utc),
+                fecha_corte,
+            ),
         )
 
         if accion == "pronostico":
@@ -408,10 +416,22 @@ def crear_router(
             )
 
         except Exception as exc:
-            _LOG.warning(
-                "Fallo analítico de tipo %s",
-                type(exc).__name__,
-            )
+            # Diagnóstico opt-in SOLO para desarrollo local. Nunca incluir
+            # detalles internos de la excepción en la respuesta HTTP.
+            if os.getenv("FINTRACK_ANALITICA_DEBUG", "0") == "1":
+                logging.getLogger("uvicorn.error").exception(
+                    "Error interno de analítica (depuración local)"
+                )
+                return _respuesta_error(
+                    500,
+                    "ERROR_ANALITICA",
+                    "No se pudo completar el análisis; intenta más tarde.",
+                )
+            else:
+                _LOG.warning(
+                    "Fallo analítico de tipo %s",
+                    type(exc).__name__,
+                )
 
             return _respuesta_error(
                 500,
