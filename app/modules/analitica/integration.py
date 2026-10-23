@@ -1,14 +1,17 @@
-"""Cableado conservador FinTrack V1.1; no modifica saldos ni guarda predicciones."""
+"""FinTrack V1.1: política certificada, PNG bajo demanda y reportes de lectura."""
+import os
 from uuid import UUID
 
 import psycopg
-from fastapi import Depends
+from fastapi import APIRouter, Depends
 from sqlalchemy.engine import make_url
 
 from app.core.config import settings
 from app.core.dependencies import get_current_user
 from app.modules.usuarios.model import Usuario
 from app.modules.analitica.ejemplo_integracion_fastapi import crear_router
+from app.modules.analitica.politica_datos import crear_politica_datos
+from app.modules.analitica.reportes_periodo import crear_router_reportes
 
 
 def usuario_activo_uuid(usuario: Usuario = Depends(get_current_user)) -> UUID:
@@ -22,22 +25,31 @@ def conexion_factory():
     if not url.drivername.startswith('postgresql'):
         raise RuntimeError('La analítica requiere PostgreSQL')
     # El motor psycopg no acepta la sintaxis dialecto+driver de SQLAlchemy.
-    return psycopg.connect(url.set(drivername='postgresql').render_as_string(hide_password=False))
+    return psycopg.connect(
+        url.set(drivername='postgresql').render_as_string(hide_password=False),
+        connect_timeout=10,
+        application_name="fintrack-analitica-v11",
+    )
+
+
+_politica_certificada = crear_politica_datos(
+    conexion_factory,
+    cobertura_real_json=os.getenv("FINTRACK_COBERTURA_REAL_JSON", "{}"),
+)
 
 
 def politica_datos(usuario_id, instantanea):
-    """Política segura inicial: usuarios reales y cobertura NO certificada.
-
-    No inferir semanas cubiertas por fecha de registro o primer movimiento.
-    Para una DEMO sintética, implementar autorización/certificación del lado servidor
-    y aislar completamente los datos de producción antes de modificar esta política.
-    """
-    return {'origen_datos': 'REAL', 'cobertura': []}
+    """Obtiene procedencia y cobertura certificadas desde la política V1.1.1."""
+    return _politica_certificada(usuario_id, instantanea)
 
 
-router = crear_router(
+router = APIRouter()
+router.include_router(crear_router(
     usuario_activo_uuid,
     conexion_factory,
     politica_datos,
     persistir_resultados=False,
-)
+))
+
+# main.py ya incluye este router: no registrar rutas analíticas dos veces.
+router.include_router(crear_router_reportes(usuario_activo_uuid, conexion_factory))
