@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import unicodedata
 import os
 from collections.abc import Mapping
 from datetime import datetime, timezone
@@ -29,6 +30,7 @@ from app.modules.analitica.adaptador_neon_v11 import (
 from app.modules.analitica.fintrack_v1_1_softcomputing_engine import (
     ContextoAnalitico,
     MotorConCache,
+    LexiconClasificacionNoDisponible,
     respuesta_json,
     sugerir_clasificacion_texto,
 )
@@ -356,11 +358,15 @@ def crear_router(
                     "",
                 ).strip()
 
-                if not 3 <= len(detalle) <= 500:
+                normal_util = "".join(
+                    caracter for caracter in unicodedata.normalize("NFKD", detalle).casefold()
+                    if not unicodedata.combining(caracter) and caracter.isalnum()
+                )
+                if not 3 <= len(detalle) <= 500 or len(normal_util) < 3:
                     raise _ErrorPublico(
                         422,
                         "DETALLE_VACIO_O_INVALIDO",
-                        "detalle debe contener entre 3 y 500 caracteres.",
+                        "detalle debe contener entre 3 y 500 caracteres y al menos tres caracteres útiles.",
                     )
 
                 parametros["detalle"] = detalle
@@ -402,6 +408,14 @@ def crear_router(
                 503,
                 "INSTANTANEA_NO_DISPONIBLE",
                 "No se pudo preparar una instantánea completa; intenta más tarde.",
+            )
+
+        except LexiconClasificacionNoDisponible:
+            _LOG.exception("Recurso léxico de clasificación no disponible o inválido.")
+            return _respuesta_error(
+                503,
+                "RECURSO_LEXICO_NO_DISPONIBLE",
+                "El servicio de sugerencias no está disponible temporalmente.",
             )
 
         except ErrorAdaptador:

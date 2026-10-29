@@ -39,6 +39,10 @@ class DatosInvalidos(ValueError):
     """Entrada interna incompatible; FastAPI debe mapearla sin exponer trazas."""
 
 
+class LexiconClasificacionNoDisponible(RuntimeError):
+    """El recurso léxico versionado falta o no pasa su validación."""
+
+
 def normalizar_uuid(valor, nombre="uuid"):
     try:
         if isinstance(valor, bool) or valor is None:
@@ -910,7 +914,9 @@ def evaluar_salud_difusa_periodo(resumen_periodo, detalles_grupo, contexto, *, p
 # No usa un lexicón comercial como si fuera un modelo preentrenado/calibrado.
 # ---------------------------------------------------------------------------
 
-CLASIFICADOR_VERSION = "tfidf_nb_privado_v1.1.0"
+CLASIFICADOR_VERSION = "clasificador_hibrido_v1.1.1"
+LEXICON_VERSION = "fintrack-lexicon-mx-1.0.0"
+REGLAS_MAPEO_VERSION = "fintrack-lexicon-map-1.0.0"
 CLASIFICADOR_PARAMETROS = {
     "min_documentos_nb": 6,
     "min_clases_nb": 2,
@@ -975,7 +981,7 @@ def _clas_agregar_sin_duplicados(destino, clave, registro, nombre):
     destino[clave] = registro
 
 
-def sugerir_clasificacion_texto(
+def _sugerir_clasificacion_texto_privado(
     detalle, historial, categorias, subcategorias, grupos, contexto
 ):
     """Sugiere, nunca aplica, una clasificación a partir del historial GASTO propio.
@@ -1165,8 +1171,10 @@ def sugerir_clasificacion_texto(
         return respuesta
 
     if not categorias_por_id:
+        ficha["motivo_codigo"] = "SIN_DESTINO"
         return respuesta_sin_sugerencia("No tienes categorías activas elegibles para sugerir una clasificación.")
     if not documentos:
+        ficha["motivo_codigo"] = "SIN_HISTORIAL"
         return respuesta_sin_sugerencia("Aún no hay gastos propios con texto y clasificación vigentes para aprender.")
 
     coincidencias = Counter(
@@ -1174,11 +1182,13 @@ def sugerir_clasificacion_texto(
     )
     ficha["coincidencias_exactas"] = sum(coincidencias.values())
     if len(coincidencias) > 1:
+        ficha["motivo_codigo"] = "CONFLICTO_PERSONAL"
         return respuesta_sin_sugerencia("Ese mismo detalle tiene clasificaciones distintas en tu historial; selecciona una manualmente.")
     if len(coincidencias) == 1:
         etiqueta, repeticiones = next(iter(coincidencias.items()))
         if repeticiones >= CLASIFICADOR_PARAMETROS["min_repeticiones_exactas"]:
             return respuesta_sugerida(etiqueta, "HISTORIAL_COINCIDENCIA")
+        ficha["motivo_codigo"] = "MEMORIA_PERSONAL_INSUFICIENTE"
 
     if len(documentos) < CLASIFICADOR_PARAMETROS["min_documentos_nb"] or len(clases) < CLASIFICADOR_PARAMETROS["min_clases_nb"]:
         return respuesta_sin_sugerencia("Todavía falta variedad de ejemplos para una sugerencia de texto nuevo; puedes clasificarlo manualmente.")
@@ -1231,6 +1241,188 @@ def sugerir_clasificacion_texto(
             or margen < CLASIFICADOR_PARAMETROS["min_margen_probabilidades"]):
         return respuesta_sin_sugerencia("El modelo no obtuvo evidencia suficientemente separada entre tus clasificaciones; elige una manualmente.")
     return respuesta_sugerida(etiqueta, "TFIDF_MULTINOMIAL_NB_PRIVADO")
+
+
+# Lexicón local, pequeño y revisado para el fallback de sugerencias. No representa
+# una probabilidad ni una garantía de clasificación; los destinos siempre salen
+# del catálogo activo del usuario autenticado.
+_LEXICON_CACHE = None
+_LEXICON_PATH = __import__("pathlib").Path(__file__).resolve().parent / "recursos" / "lexicon_clasificacion_v1.json"
+
+
+def _cargar_lexicon_clasificacion():
+    global _LEXICON_CACHE
+    if _LEXICON_CACHE is None:
+        try:
+            with _LEXICON_PATH.open("r", encoding="utf-8") as archivo:
+                recurso = json.load(archivo)
+        except (OSError, json.JSONDecodeError) as exc:
+            raise LexiconClasificacionNoDisponible("No se pudo cargar el recurso léxico requerido para sugerencias.") from exc
+        if (not isinstance(recurso, dict) or recurso.get("version") != LEXICON_VERSION
+                or not isinstance(recurso.get("dominios"), list) or not recurso["dominios"]):
+            raise LexiconClasificacionNoDisponible("El recurso léxico de sugerencias está mal formado o tiene versión inesperada.")
+        ids_dominio = set()
+        for dominio in recurso["dominios"]:
+            if (not isinstance(dominio, dict) or not isinstance(dominio.get("id"), str)
+                    or dominio["id"] in ids_dominio):
+                raise LexiconClasificacionNoDisponible("Dominio léxico inválido o duplicado.")
+            ids_dominio.add(dominio["id"])
+            terminos = dominio.get("terminos")
+            aliases = dominio.get("aliases_categoria")
+            subaliases = dominio.get("aliases_subcategoria", [])
+            if not isinstance(terminos, list) or not terminos or not isinstance(aliases, list) or not aliases:
+                raise LexiconClasificacionNoDisponible("Dominio léxico sin términos o destinos revisables.")
+            vistos_dominio = set()
+            for termino in terminos:
+                normal = _clas_texto(termino)
+                if len(normal) < 2 or normal != termino or normal in vistos_dominio:
+                    raise LexiconClasificacionNoDisponible("Término léxico inválido o duplicado dentro del dominio.")
+                vistos_dominio.add(normal)
+            if not all(isinstance(x, str) and _clas_texto(x) for x in aliases + subaliases):
+                raise LexiconClasificacionNoDisponible("Alias de catálogo inválido.")
+        _LEXICON_CACHE = recurso
+    return _LEXICON_CACHE
+
+
+def validar_recurso_lexico_clasificacion():
+    """Valida y precarga el recurso léxico al construir la integración."""
+    return _cargar_lexicon_clasificacion()
+
+
+def _clas_contiene_frase(texto, frase):
+    # Fronteras de palabra: 'pan' no coincide con 'pantalla', ni 'gas' con 'gasto'.
+    return re.search(r"(?<![a-z0-9])" + re.escape(frase) + r"(?![a-z0-9])", texto) is not None
+
+
+def _clas_nombre_catalogo(valor):
+    normal = _clas_texto(valor)
+    # Solo elimina el sufijo final conocido DEMO para comparar nombres; no muta el catálogo.
+    return re.sub(r"\s+demo$", "", normal).strip()
+
+
+def _sugerencia_lexica(detalle, respuesta_base, categorias, subcategorias, grupos, contexto):
+    ficha = respuesta_base.get("ficha_tecnica", {})
+    if not respuesta_base.get("sugerencia_encontrada") and ficha.get("motivo_codigo") in {
+        "CONFLICTO_PERSONAL", "MEMORIA_PERSONAL_INSUFICIENTE", "SIN_DESTINO"
+    }:
+        return respuesta_base
+
+    recurso = _cargar_lexicon_clasificacion()
+    consulta = _clas_texto(detalle)
+    dominios_detectados = []
+    for dominio in recurso["dominios"]:
+        coincidencias = [t for t in dominio["terminos"] if _clas_contiene_frase(consulta, t)]
+        # Una frase comercial más específica sustituye al disparador genérico que
+        # contiene, pero no oculta otros conceptos en fragmentos distintos.
+        if _clas_contiene_frase(consulta, "uber eats") and dominio["id"] == "uber_didi_trabajo":
+            coincidencias = [t for t in coincidencias if t != "uber"]
+        if coincidencias:
+            # Las frases más específicas prevalecen dentro del mismo dominio.
+            longitud = max(len(t.split()) for t in coincidencias)
+            terminos = sorted(t for t in coincidencias if len(t.split()) == longitud)
+            dominios_detectados.append((dominio, terminos))
+    if not dominios_detectados:
+        if ficha:
+            ficha["motivo_codigo"] = "FUERA_VOCABULARIO"
+        return respuesta_base
+
+    # Conceptos de dominios diferentes en una misma descripción son ambiguos.
+    ids_dominio = {d["id"] for d, _ in dominios_detectados}
+    if len(ids_dominio) > 1:
+        ficha["motivo_codigo"] = "DESTINO_AMBIGUO"
+        respuesta_base["explicacion_ux"] = "La descripción contiene conceptos de gasto distintos; elige la categoría manualmente."
+        return respuesta_base
+
+    dominio, terminos = dominios_detectados[0]
+    # Construir únicamente destinos activos ya validados por el motor privado. La ficha
+    # del motor conserva los UUID propios y el grupo derivado de la categoría.
+    filas_cat = filas_propias(categorias, contexto, campos=("id_categoria", "grupo_id", "nombre_categoria", "es_activa_categoria"))
+    filas_grupo = filas_propias(grupos, contexto, campos=("id_grupo", "codigo_grupo", "nombre_grupo", "es_activo_grupo"))
+    grupos_activos = {normalizar_uuid(g["id_grupo"]): g for g in filas_grupo if _clas_es_activo(g["es_activo_grupo"]) and str(g["codigo_grupo"]) in {"G001", "G002", "G003", "G004"}}
+    categorias_activas = []
+    aliases_cat = {_clas_texto(a) for a in dominio["aliases_categoria"]}
+    for c in filas_cat:
+        if not _clas_es_activo(c["es_activa_categoria"]):
+            continue
+        cid, gid = normalizar_uuid(c["id_categoria"]), normalizar_uuid(c["grupo_id"])
+        if gid not in grupos_activos:
+            continue
+        if _clas_nombre_catalogo(c["nombre_categoria"]) in aliases_cat:
+            categorias_activas.append((cid, gid, c))
+    if len(categorias_activas) != 1:
+        ficha["motivo_codigo"] = "SIN_DESTINO" if not categorias_activas else "DESTINO_AMBIGUO"
+        respuesta_base["explicacion_ux"] = ("El vocabulario reconoce el concepto, pero no existe una categoría propia activa compatible." if not categorias_activas else "Hay más de una categoría propia compatible; elige una manualmente.")
+        return respuesta_base
+
+    cid, gid, categoria = categorias_activas[0]
+    subs = []
+    aliases_sub = {_clas_texto(a) for a in dominio.get("aliases_subcategoria", [])}
+    if aliases_sub:
+        for sub in _clas_filas(subcategorias):
+            if _clas_ausente(sub.get("categoria_id")) or normalizar_uuid(sub["categoria_id"]) != cid:
+                continue
+            if "usuario_id" in sub and not _clas_ausente(sub["usuario_id"]) and normalizar_uuid(sub["usuario_id"]) != contexto.usuario_id:
+                continue
+            if not _clas_es_activo(sub.get("es_activa_subcategoria")):
+                continue
+            if _clas_nombre_catalogo(sub.get("nombre_subcategoria", "")) in aliases_sub:
+                subs.append(sub)
+    if len(subs) > 1:
+        # Categoría inequívoca, subcategoría no: devolver categoría sola.
+        sub = None
+    else:
+        sub = subs[0] if subs else None
+    grupo = grupos_activos[gid]
+    ficha.update({
+        "metodo": "LEXICON",
+        "version_clasificador": CLASIFICADOR_VERSION,
+        "version_lexicon": recurso["version"],
+        "version_mapeo": REGLAS_MAPEO_VERSION,
+        "terminos_reconocidos": terminos,
+        "dominio_lexico": dominio["id"],
+        "motivo_codigo": "COINCIDENCIA_LEXICA",
+        "confianza_calibrada_disponible": False,
+        "confirmacion_requerida": True,
+        "persistencia_prediccion": False,
+    })
+    respuesta_base.update({
+        "estado": "OK",
+        "explicacion_ux": f"El vocabulario de apoyo relaciona {', '.join(terminos)} con tu categoría {categoria['nombre_categoria']}. Revisa y confirma la sugerencia.",
+        "sugerencia_encontrada": True,
+        "grupo_id": gid,
+        "categoria_id": cid,
+        "subcategoria_id": normalizar_uuid(sub["id_subcategoria"]) if sub else None,
+        "codigo_grupo": str(grupo["codigo_grupo"]),
+        "nombre_grupo": str(grupo["nombre_grupo"]),
+        "nombre_categoria": str(categoria["nombre_categoria"]),
+        "nombre_subcategoria": str(sub["nombre_subcategoria"]) if sub else None,
+        "confianza": None,
+    })
+    return respuesta_base
+
+
+def sugerir_clasificacion_texto(detalle, historial, categorias, subcategorias, grupos, contexto):
+    """Clasificación híbrida: memoria personal, ML privado y lexicón conservador."""
+    if not isinstance(detalle, str):
+        raise DatosInvalidos("detalle debe ser texto.")
+    normal = _clas_texto(detalle)
+    if not 3 <= len(detalle.strip()) <= 500 or len(normal) < 3:
+        raise DatosInvalidos("detalle debe contener entre 3 y 500 caracteres y al menos tres caracteres útiles.")
+    recurso = _cargar_lexicon_clasificacion()
+    resultado = _sugerir_clasificacion_texto_privado(
+        detalle, historial, categorias, subcategorias, grupos, contexto
+    )
+    # La huella identifica también el contenido léxico y las reglas de resolución,
+    # independientemente del método que finalmente haya producido la propuesta.
+    lexicon_hash = sha256(json.dumps(recurso, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+    ficha = resultado.setdefault("ficha_tecnica", {})
+    ficha.update({"version_lexicon": recurso["version"], "version_mapeo": REGLAS_MAPEO_VERSION, "huella_lexicon": lexicon_hash})
+    if resultado.get("huella_datos"):
+        resultado["huella_datos"] = sha256((resultado["huella_datos"] + lexicon_hash + REGLAS_MAPEO_VERSION).encode("utf-8")).hexdigest()
+    if resultado.get("sugerencia_encontrada"):
+        return resultado
+    # No permitir que el fallback tape un conflicto personal ni un indicio propio aún insuficiente.
+    return _sugerencia_lexica(detalle, resultado, categorias, subcategorias, grupos, contexto)
 
 
 

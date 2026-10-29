@@ -1,0 +1,1245 @@
+{
+  "metadata": {
+    "schema_version": "1.0",
+    "resource_kind": "lexicon_original_reference",
+    "status": "PENDIENTE_DE_REVISION_Y_MAPEO",
+    "source": {
+      "file_name": "fintrack_v1_1_softcomputing_engine.py",
+      "source_directory_label": "SOFTCOMPUTING/261016-1923",
+      "assignment": "MASSIVE_MEXICAN_LEXICON",
+      "assignment_start_line": 399,
+      "assignment_end_line": 1449,
+      "source_file_sha256": "7702302794fb484a46211f97203137b15ed70cae9ad62a3c7341cc5b5d5c274d",
+      "extraction_method": "Python ast.parse + ast.literal_eval; el motor original no se importo ni ejecuto"
+    },
+    "counts": {
+      "domains": 24,
+      "keywords": 636,
+      "category_aliases": 104,
+      "subcategory_aliases": 117,
+      "total_list_entries": 857,
+      "unique_normalized_list_entries": 727
+    },
+    "warnings": [
+      "Recurso fiel de datos originales; no es una implementacion lista para produccion ni un clasificador entrenado.",
+      "Revisar ambiguedades, terminos genericos, colisiones y aliases antes de habilitarlo.",
+      "No incluye ni autoriza UUID, categorias globales, reglas de usuario ni mapeos precalculados a Neon.",
+      "El comentario original declara 858 terminos; el conteo de las listas extraidas es el de counts.total_list_entries.",
+      "No usar los puntajes, umbrales, busquedas por subcadena ni la funcion de inferencia del motor antiguo.",
+      "Las sugerencias deben unirse exclusivamente al catalogo activo propio y requerir confirmacion del usuario.",
+      "La deteccion lexica es una regla explicable; no es probabilidad, precision medida ni confianza de Naive Bayes."
+    ],
+    "runtime_resource_version": "fintrack-lexicon-mx-1.0.0",
+    "mapping_version": "fintrack-lexicon-map-1.0.0",
+    "curated_category_aliases": {
+      "gasolina": [
+        "transporte",
+        "transporte y movilidad",
+        "movilidad",
+        "vehiculo",
+        "vehiculos",
+        "carro"
+      ],
+      "estacionamiento": [
+        "transporte",
+        "transporte y movilidad",
+        "movilidad",
+        "vehiculo",
+        "vehiculos",
+        "carro"
+      ],
+      "servicios y mantenimiento": [
+        "transporte",
+        "mantenimiento vehicular",
+        "vehiculo",
+        "vehiculos",
+        "carro"
+      ],
+      "tarjeta siteur / mi movilidad": [
+        "transporte",
+        "transporte publico",
+        "movilidad"
+      ],
+      "uber / didi trabajo": [
+        "transporte",
+        "transporte publico",
+        "movilidad",
+        "taxis"
+      ],
+      "tianguis y despensa": [
+        "alimentacion",
+        "alimentación",
+        "comida",
+        "despensa",
+        "supermercado"
+      ],
+      "supermercado": [
+        "alimentacion",
+        "alimentación",
+        "comida",
+        "despensa",
+        "supermercado"
+      ],
+      "comida corrida laboral": [
+        "alimentacion",
+        "alimentación",
+        "comida",
+        "restaurantes"
+      ],
+      "internet y luz": [
+        "servicios",
+        "servicios del hogar",
+        "vivienda y servicios",
+        "hogar"
+      ],
+      "renta / mantenimiento": [
+        "renta",
+        "vivienda",
+        "vivienda y servicios",
+        "alquiler"
+      ],
+      "gimnasio smart fit": [
+        "fitness",
+        "salud",
+        "deporte",
+        "gimnasio"
+      ],
+      "suplementos y farmacia": [
+        "salud",
+        "farmacia",
+        "medicina",
+        "fitness"
+      ],
+      "educacion y universidad": [
+        "educacion",
+        "educación",
+        "escuela",
+        "universidad",
+        "gastos fijos"
+      ],
+      "apoyo familia": [
+        "familia",
+        "apoyo familiar",
+        "gastos fijos"
+      ],
+      "restaurantes y salidas": [
+        "restaurantes",
+        "restaurante",
+        "comida",
+        "salidas",
+        "gustos"
+      ],
+      "delivery fin de semana": [
+        "delivery",
+        "comida",
+        "restaurantes",
+        "apps"
+      ],
+      "cafe oxxo / andatti": [
+        "cafeteria",
+        "cafetería",
+        "cafe",
+        "café",
+        "cafe y snacks",
+        "snacks y cafe",
+        "snacks",
+        "antojos"
+      ],
+      "botanas y antojos": [
+        "snacks",
+        "snacks y cafe",
+        "antojitos",
+        "antojos",
+        "comida"
+      ],
+      "propinas y varios": [
+        "varios",
+        "otros",
+        "propinas"
+      ],
+      "cine y streaming": [
+        "entretenimiento",
+        "ocio",
+        "suscripciones",
+        "streaming"
+      ],
+      "compras online y ropa": [
+        "compras",
+        "ropa",
+        "otros",
+        "gustos"
+      ],
+      "abono capital": [
+        "pagos de deuda",
+        "deudas",
+        "creditos",
+        "créditos"
+      ],
+      "intereses y comisiones": [
+        "costos financieros",
+        "deudas",
+        "bancos"
+      ],
+      "aportacion a cajita": [
+        "ahorro",
+        "ahorros",
+        "metas",
+        "inversion",
+        "inversión",
+        "reserva"
+      ]
+    },
+    "runtime_status": "REVISADO_CON_MAPEO_CONSERVADOR"
+  },
+  "lexicon": {
+    "gasolina": {
+      "synonyms_cat": [
+        "carro",
+        "auto",
+        "vehiculo",
+        "coche",
+        "transporte",
+        "combustible",
+        "moto"
+      ],
+      "synonyms_sub": [
+        "gasolina",
+        "combustible",
+        "carga gasolina",
+        "magna",
+        "premium",
+        "diesel"
+      ],
+      "keywords": [
+        "pemex",
+        "magna",
+        "premium",
+        "gasolinera",
+        "shell",
+        "mobil",
+        "bp",
+        "repsol",
+        "oxxo gas",
+        "oxxogas",
+        "total",
+        "g500",
+        "petro7",
+        "petro seven",
+        "chevron",
+        "texaco",
+        "arco",
+        "valero",
+        "akron",
+        "windstar",
+        "rendichicas",
+        "litros",
+        "tanque lleno",
+        "bomba gasolina",
+        "diesel"
+      ]
+    },
+    "estacionamiento": {
+      "synonyms_cat": [
+        "carro",
+        "auto",
+        "vehiculo",
+        "coche",
+        "transporte"
+      ],
+      "synonyms_sub": [
+        "estacionamiento",
+        "pension",
+        "parquimetro",
+        "peajes",
+        "casetas"
+      ],
+      "keywords": [
+        "estacionamiento",
+        "parquimetro",
+        "parkimovil",
+        "valet",
+        "valet parking",
+        "franelero",
+        "viene viene",
+        "pension auto",
+        "boleto estacionamiento",
+        "plaza estacionamiento",
+        "caseta",
+        "peaje",
+        "telepeaje",
+        "iave",
+        "pase",
+        "autopista",
+        "macrolibramiento"
+      ]
+    },
+    "servicios y mantenimiento": {
+      "synonyms_cat": [
+        "carro",
+        "auto",
+        "vehiculo",
+        "coche",
+        "mantenimiento"
+      ],
+      "synonyms_sub": [
+        "servicios y mantenimiento",
+        "taller",
+        "refacciones",
+        "llantas",
+        "mecanico",
+        "servicio",
+        "lavado"
+      ],
+      "keywords": [
+        "mecanico",
+        "afinacion",
+        "amortiguadores",
+        "llantas",
+        "aceite",
+        "frenos",
+        "balatas",
+        "taller",
+        "bateria",
+        "acumulador",
+        "lth",
+        "autozone",
+        "orma",
+        "refaccionaria",
+        "california",
+        "spark",
+        "chevrolet",
+        "nissan",
+        "aveo",
+        "versa",
+        "vw",
+        "italika",
+        "bujias",
+        "filtro aire",
+        "filtro aceite",
+        "anticongelante",
+        "prestone",
+        "alineacion",
+        "balanceo",
+        "vulcanizadora",
+        "llantera",
+        "michelin",
+        "bridgestone",
+        "goodyear",
+        "pirelli",
+        "autolavado",
+        "carwash",
+        "lavado auto",
+        "verificacion",
+        "refrendo",
+        "tenencia",
+        "seguro auto",
+        "qualitas",
+        "gnp",
+        "axa",
+        "chubb",
+        "hdi",
+        "limpiaparabrisas",
+        "foco led",
+        "philips",
+        "clutch",
+        "embrague",
+        "radiador",
+        "banda distribucion",
+        "suspension",
+        "rotulas",
+        "terminales",
+        "grua",
+        "aire llantas"
+      ]
+    },
+    "tarjeta siteur / mi movilidad": {
+      "synonyms_cat": [
+        "transporte publico",
+        "transporte",
+        "movilidad",
+        "pasajes"
+      ],
+      "synonyms_sub": [
+        "tarjeta siteur",
+        "mi movilidad",
+        "camion",
+        "tren ligero",
+        "metro",
+        "autobus"
+      ],
+      "keywords": [
+        "siteur",
+        "mi movilidad",
+        "mimovilidad",
+        "tren ligero",
+        "linea 1",
+        "linea 2",
+        "linea 3",
+        "linea 4",
+        "macrobus",
+        "mi macro",
+        "peribus",
+        "camion",
+        "pasaje",
+        "transporte publico",
+        "metro",
+        "metrobus",
+        "rtp",
+        "trolebus",
+        "suburbano",
+        "ecobici",
+        "mibici",
+        "recarga tarjeta",
+        "ruta",
+        "transvalle",
+        "foraneo",
+        "etn",
+        "primera plus",
+        "vallarta plus",
+        "omnibus",
+        "ado",
+        "flecha amarilla",
+        "central nueva",
+        "central vieja",
+        "autobus"
+      ]
+    },
+    "uber / didi trabajo": {
+      "synonyms_cat": [
+        "transporte publico",
+        "transporte",
+        "movilidad",
+        "taxis"
+      ],
+      "synonyms_sub": [
+        "uber",
+        "didi",
+        "taxi",
+        "viajes app",
+        "traslados"
+      ],
+      "keywords": [
+        "uber",
+        "didi",
+        "indriver",
+        "indrive",
+        "cabify",
+        "taxi",
+        "sitio",
+        "viaje trabajo",
+        "traslado",
+        "uberx",
+        "uber planet",
+        "didi express",
+        "viaje oficina",
+        "viaje cucei"
+      ]
+    },
+    "tianguis y despensa": {
+      "synonyms_cat": [
+        "comida",
+        "alimentacion",
+        "despensa",
+        "hogar"
+      ],
+      "synonyms_sub": [
+        "tianguis",
+        "mercado",
+        "despensa",
+        "verduras",
+        "carniceria"
+      ],
+      "keywords": [
+        "tianguis",
+        "mercado",
+        "abastos",
+        "central de abastos",
+        "verdura",
+        "verduras",
+        "fruta",
+        "frutas",
+        "fruteria",
+        "carniceria",
+        "polleria",
+        "pollo",
+        "pechuga",
+        "bistec",
+        "carne",
+        "pescaderia",
+        "huevo",
+        "carton huevo",
+        "tortilleria",
+        "tortillas",
+        "queso",
+        "cremeria",
+        "abarrotes",
+        "semillas",
+        "frijol",
+        "arroz",
+        "avena",
+        "Aguacate",
+        "jitomate",
+        "cebolla",
+        "garrafon",
+        "ciel",
+        "bonafont",
+        "epura",
+        "electropura",
+        "agua purificada"
+      ]
+    },
+    "supermercado": {
+      "synonyms_cat": [
+        "comida",
+        "alimentacion",
+        "despensa",
+        "supermercado"
+      ],
+      "synonyms_sub": [
+        "supermercado",
+        "super",
+        "despensa",
+        "compras mes"
+      ],
+      "keywords": [
+        "walmart",
+        "soriana",
+        "chedraui",
+        "costco",
+        "sams",
+        "sams club",
+        "fresko",
+        "la comer",
+        "city market",
+        "bodega aurrera",
+        "aurrera",
+        "heb",
+        "superama",
+        "walmart express",
+        "ley",
+        "casa ley",
+        "calimax",
+        "alSuper",
+        "smart",
+        "neto",
+        "tiendas 3b",
+        "3b",
+        "zorro abarrotero",
+        "supermercado",
+        "mandado",
+        "despensa quincenal"
+      ]
+    },
+    "comida corrida laboral": {
+      "synonyms_cat": [
+        "comida",
+        "alimentacion",
+        "trabajo"
+      ],
+      "synonyms_sub": [
+        "comida corrida",
+        "comida en la calle",
+        "comedor",
+        "almuerzo",
+        "lonche"
+      ],
+      "keywords": [
+        "comida corrida",
+        "fonda",
+        "cocina economica",
+        "comedor",
+        "comedor industrial",
+        "comedor cucei",
+        "almuerzo trabajo",
+        "menu del dia",
+        "lonche",
+        "torta ahogada",
+        "tortas",
+        "gorditas",
+        "quesadillas",
+        " chilaquiles",
+        "desayuno trabajo",
+        "comida oficina"
+      ]
+    },
+    "internet y luz": {
+      "synonyms_cat": [
+        "vivienda",
+        "vivienda y servicios",
+        "servicios",
+        "hogar",
+        "casa"
+      ],
+      "synonyms_sub": [
+        "internet y luz",
+        "electricidad",
+        "agua potable",
+        "gas lp",
+        "telefonia"
+      ],
+      "keywords": [
+        "cfe",
+        "recibo luz",
+        "luz",
+        "electricidad",
+        "telmex",
+        "infinitum",
+        "totalplay",
+        "izzi",
+        "megacable",
+        "starlink",
+        "axtel",
+        "internet",
+        "wifi",
+        "fibra optica",
+        "siapa",
+        "agua",
+        "recibo agua",
+        "sacmex",
+        "gas lp",
+        "zeta gas",
+        "gas rosa",
+        "global gas",
+        "gas natural",
+        "naturgy",
+        "cilindro gas",
+        "gas estacionario",
+        "telcel",
+        "att",
+        "at&t",
+        "movistar",
+        "bait",
+        "virgin",
+        "recarga saldo",
+        "plan tarifario",
+        "celular"
+      ]
+    },
+    "renta / mantenimiento": {
+      "synonyms_cat": [
+        "vivienda",
+        "vivienda y servicios",
+        "hogar",
+        "casa"
+      ],
+      "synonyms_sub": [
+        "renta",
+        "mantenimiento",
+        "alquiler",
+        "hipoteca",
+        "predial"
+      ],
+      "keywords": [
+        "renta",
+        "alquiler",
+        "mensualidad casa",
+        "departamento",
+        "cuarto",
+        "roomie",
+        "mantenimiento coto",
+        "cuota mantenimiento",
+        "vigilancia",
+        "infonavit",
+        "fovissste",
+        "hipoteca",
+        "predial",
+        "impuesto predial",
+        "ferreteria",
+        "home depot",
+        "truper",
+        "steren",
+        "foco",
+        "plomero",
+        "electricista",
+        "cerrajero",
+        "pintura",
+        "fumigacion"
+      ]
+    },
+    "gimnasio smart fit": {
+      "synonyms_cat": [
+        "fitness",
+        "fitness y salud",
+        "salud",
+        "deporte",
+        "gym"
+      ],
+      "synonyms_sub": [
+        "gimnasio",
+        "smart fit",
+        "entreno",
+        "deporte"
+      ],
+      "keywords": [
+        "smart fit",
+        "smartfit",
+        "gimnasio",
+        "gym",
+        "mensualidad gym",
+        "anualidad gym",
+        "anytime fitness",
+        "sports world",
+        "planet fitness",
+        "station 24",
+        "crossfit",
+        "natacion",
+        "alberca",
+        "cancha",
+        "futbol",
+        "padel",
+        "entreno",
+        "heavy duty"
+      ]
+    },
+    "suplementos y farmacia": {
+      "synonyms_cat": [
+        "fitness",
+        "fitness y salud",
+        "salud",
+        "medicina",
+        "farmacia"
+      ],
+      "synonyms_sub": [
+        "suplementos",
+        "farmacia",
+        "medicina",
+        "consulta",
+        "laboratorio",
+        "vitaminas"
+      ],
+      "keywords": [
+        "proteina",
+        "whey",
+        "isolean",
+        "creatina",
+        "bcaa",
+        "preentreno",
+        "pre workout",
+        "gnc",
+        "vitaminas",
+        "complejo b",
+        "magnesio",
+        "magimag",
+        "potasio",
+        "kadsorb",
+        "omega 3",
+        "suplementos",
+        "farmacia",
+        "farmacias guadalajara",
+        "similares",
+        "dr simi",
+        "benavides",
+        "san pablo",
+        "del ahorro",
+        "yza",
+        "medicina",
+        "medicamento",
+        "antibiotico",
+        "analgesico",
+        "paracetamol",
+        "ibuprofeno",
+        "consulta medica",
+        "doctor",
+        "dentista",
+        "odontologo",
+        "optica",
+        "lentes",
+        "salud digna",
+        "chopo",
+        "analisis clinicos"
+      ]
+    },
+    "educacion y universidad": {
+      "synonyms_cat": [
+        "educacion",
+        "escuela",
+        "universidad",
+        "gastos fijos",
+        "otros"
+      ],
+      "synonyms_sub": [
+        "universidad",
+        "colegiatura",
+        "cursos",
+        "papeleria",
+        "titulacion"
+      ],
+      "keywords": [
+        "cucei",
+        "udg",
+        "universidad de guadalajara",
+        "orden de pago",
+        "matricula",
+        "titulacion",
+        "ceneval",
+        "egel",
+        "certificado",
+        "kardex",
+        "ingles",
+        "proulex",
+        "udemy",
+        "coursera",
+        "platzi",
+        "libro",
+        "gonvill",
+        "gandhi",
+        "porrua",
+        "papeleria",
+        "copias",
+        "impresiones",
+        "office depot",
+        "office max",
+        "lumen"
+      ]
+    },
+    "apoyo familia": {
+      "synonyms_cat": [
+        "familia",
+        "gastos fijos",
+        "otros"
+      ],
+      "synonyms_sub": [
+        "apoyo familia",
+        "familia",
+        "prestamos",
+        "regalos"
+      ],
+      "keywords": [
+        "mama",
+        "papa",
+        "hermano",
+        "familia",
+        "apoyo familiar",
+        "domingo",
+        "mesada",
+        "ayuda casa",
+        "medicinas abuela"
+      ]
+    },
+    "restaurantes y salidas": {
+      "synonyms_cat": [
+        "comida",
+        "gustos",
+        "restaurantes",
+        "salidas"
+      ],
+      "synonyms_sub": [
+        "restaurantes",
+        "comida fuera de casa",
+        "salidas",
+        "cena"
+      ],
+      "keywords": [
+        "restaurante",
+        "cena",
+        "tacos",
+        "taqueria",
+        "karne garibaldi",
+        "la gorda",
+        "el tizoncito",
+        "pizza",
+        "dominos",
+        "little caesars",
+        "pizza hut",
+        "papa johns",
+        "hamburguesa",
+        "mcdonalds",
+        "burger king",
+        "carls jr",
+        "wendys",
+        "shake shack",
+        "kfc",
+        "pollo pepe",
+        "pollo feliz",
+        "sushi",
+        "sushi roll",
+        "moshi moshi",
+        "alitas",
+        "wingstop",
+        "buffalo wild wings",
+        "chilis",
+        "applebees",
+        "italiannis",
+        "olive garden",
+        "vips",
+        "toks",
+        "sanborns",
+        "chai",
+        "la chata",
+        "mariscos",
+        "save",
+        "campomar",
+        "cerveza",
+        "bar",
+        "cantina",
+        "chapultepec",
+        "andares",
+        "la perla",
+        "cita",
+        "adelina",
+        "novia",
+        "aniversario",
+        "buffet"
+      ]
+    },
+    "delivery fin de semana": {
+      "synonyms_cat": [
+        "comida",
+        "gustos",
+        "delivery",
+        "apps"
+      ],
+      "synonyms_sub": [
+        "delivery",
+        "comida fuera de casa",
+        "domicilio",
+        "pedir comida"
+      ],
+      "keywords": [
+        "ubereats",
+        "uber eats",
+        "rappi",
+        "didi food",
+        "didifood",
+        "domicilio",
+        "delivery",
+        "pedido app",
+        "envio comida"
+      ]
+    },
+    "cafe oxxo / andatti": {
+      "synonyms_cat": [
+        "snacks",
+        "snacks y cafe",
+        "gustos",
+        "comida",
+        "antojos"
+      ],
+      "synonyms_sub": [
+        "cafe",
+        "snacks",
+        "oxxo",
+        "andatti",
+        "cafeteria"
+      ],
+      "keywords": [
+        "oxxo",
+        "andatti",
+        "cafe",
+        "starbucks",
+        "tim hortons",
+        "punta del cielo",
+        "cafe flor de cordoba",
+        "black coffee",
+        "la borra del cafe",
+        "7eleven",
+        "seven eleven",
+        "circle k",
+        "kiosko",
+        "extra",
+        "americano",
+        "capuchino",
+        "latte",
+        "frappe",
+        "termo cafe"
+      ]
+    },
+    "botanas y antojos": {
+      "synonyms_cat": [
+        "snacks",
+        "snacks y cafe",
+        "gustos",
+        "comida",
+        "otros"
+      ],
+      "synonyms_sub": [
+        "botanas",
+        "snacks",
+        "antojos",
+        "dulces",
+        "postres"
+      ],
+      "keywords": [
+        "papas",
+        "sabritas",
+        "doritos",
+        "takis",
+        "barcel",
+        "refresco",
+        "coca",
+        "coca cola",
+        "pepsi",
+        "monster",
+        "red bull",
+        "volt",
+        "amper",
+        "electrolit",
+        "suerox",
+        "gatorade",
+        "powerade",
+        "galletas",
+        "marinela",
+        "gamesa",
+        "pan dulce",
+        "bimbo",
+        "pastel",
+        "postre",
+        "marisa",
+        "okuma",
+        "neufeld",
+        "helado",
+        "nieve",
+        "dolphy",
+        "nutrisa",
+        "dairy queen",
+        "moyo",
+        "elote",
+        "esquite",
+        "duros",
+        "chicharron",
+        "chocolate",
+        "carlos v",
+        "lucas",
+        "mazapan",
+        "antojo",
+        "botana",
+        "chicles",
+        "cigarros"
+      ]
+    },
+    "propinas y varios": {
+      "synonyms_cat": [
+        "snacks",
+        "snacks y cafe",
+        "carro",
+        "otros",
+        "gustos"
+      ],
+      "synonyms_sub": [
+        "propinas",
+        "varios",
+        "gastos no registrados",
+        "por clasificar"
+      ],
+      "keywords": [
+        "propina",
+        "cerillito",
+        "empacador",
+        "limpiaparabrisas semaforo",
+        "monedas",
+        "limosna",
+        "redondeo",
+        "suelto",
+        "no recuerdo",
+        "varios"
+      ]
+    },
+    "cine y streaming": {
+      "synonyms_cat": [
+        "entretenimiento",
+        "gustos",
+        "ocio",
+        "suscripciones"
+      ],
+      "synonyms_sub": [
+        "cine y streaming",
+        "cine",
+        "streaming",
+        "suscripciones",
+        "videojuegos",
+        "conciertos"
+      ],
+      "keywords": [
+        "cinepolis",
+        "cinemex",
+        "cine",
+        "boletos cine",
+        "palomitas",
+        "netflix",
+        "spotify",
+        "youtube premium",
+        "hbo",
+        "max",
+        "disney",
+        "disney plus",
+        "amazon prime",
+        "prime video",
+        "vix",
+        "crunchyroll",
+        "apple tv",
+        "icloud",
+        "google one",
+        "chatgpt",
+        "claude",
+        "steam",
+        "playstation",
+        "psn",
+        "xbox",
+        "game pass",
+        "nintendo",
+        "concierto",
+        "ticketmaster",
+        "superboletos",
+        "auditorio telmex",
+        "estadio akron",
+        "jalisco",
+        "chivas",
+        "atlas"
+      ]
+    },
+    "compras online y ropa": {
+      "synonyms_cat": [
+        "entretenimiento",
+        "gustos",
+        "otros",
+        "compras"
+      ],
+      "synonyms_sub": [
+        "salidas",
+        "compras",
+        "ropa",
+        "mercado libre",
+        "amazon"
+      ],
+      "keywords": [
+        "mercado libre",
+        "mercadolibre",
+        "meli",
+        "amazon",
+        "aliexpress",
+        "shein",
+        "temu",
+        "liverpool",
+        "palacio de hierro",
+        "sears",
+        "suburbia",
+        "coppel",
+        "elektra",
+        "zara",
+        "pull and bear",
+        "bershka",
+        "h&m",
+        "c&a",
+        "nike",
+        "adidas",
+        "puma",
+        "tenis",
+        "playera",
+        "pantalon",
+        "camisa",
+        "corte cabello",
+        "barberia",
+        "peluqueria",
+        "perfume"
+      ]
+    },
+    "abono capital": {
+      "synonyms_cat": [
+        "pagos de deuda",
+        "deudas",
+        "creditos"
+      ],
+      "synonyms_sub": [
+        "abono",
+        "abono capital",
+        "tarjeta de credito",
+        "pago deuda"
+      ],
+      "keywords": [
+        "abono",
+        "pago deuda",
+        "pago tarjeta",
+        "mensualidad credito",
+        "abono capital",
+        "liquidacion",
+        "san pablo",
+        "santander",
+        "bbva",
+        "banorte",
+        "hsbc",
+        "citibanamex",
+        "banamex",
+        "scotiabank",
+        "inbursa",
+        "banregio",
+        "hey banco",
+        "nu",
+        "nu credito",
+        "rappi card",
+        "rappicard",
+        "stori",
+        "vexi",
+        "klar",
+        "didi prestamos",
+        "mercado pago",
+        "mercadopago",
+        "kueski",
+        "aplazo",
+        "fonacot",
+        "caja popular",
+        "prestamo metanet",
+        "caja chica",
+        "sears credito",
+        "liverpool credito"
+      ]
+    },
+    "intereses y comisiones": {
+      "synonyms_cat": [
+        "costos financieros",
+        "deudas",
+        "bancos"
+      ],
+      "synonyms_sub": [
+        "intereses y comisiones",
+        "intereses",
+        "anualidad",
+        "comision"
+      ],
+      "keywords": [
+        "interes",
+        "intereses",
+        "comision",
+        "anualidad tarjeta",
+        "manejo de cuenta",
+        "recargo",
+        "pago tardio",
+        "iva intereses",
+        "cat",
+        "costo financiero",
+        "spei comision"
+      ]
+    },
+    "aportacion a cajita": {
+      "synonyms_cat": [
+        "reserva",
+        "ahorro",
+        "inversion",
+        "metas"
+      ],
+      "synonyms_sub": [
+        "aportacion",
+        "aportacion a cajita",
+        "cajita",
+        "fondo emergencia"
+      ],
+      "keywords": [
+        "cajita",
+        "cajita nu",
+        "apartado",
+        "ahorro",
+        "cetes",
+        "cetesdirecto",
+        "gbm",
+        "finsus",
+        "supertasas",
+        "klar inversion",
+        "uala",
+        "boveda",
+        "fondo emergencia",
+        "meta ahorro",
+        "inversion",
+        "pagare"
+      ]
+    }
+  }
+}

@@ -11,6 +11,7 @@ from app.core.dependencies import get_current_user
 from app.modules.usuarios.model import Usuario
 from app.modules.analitica.ejemplo_integracion_fastapi import crear_router
 from app.modules.analitica.politica_datos import crear_politica_datos
+from app.modules.analitica.fintrack_v1_1_softcomputing_engine import validar_recurso_lexico_clasificacion
 from app.modules.analitica.reportes_periodo import crear_router_reportes
 
 
@@ -42,6 +43,10 @@ def politica_datos(usuario_id, instantanea):
     """Obtiene procedencia y cobertura certificadas desde la política V1.1.1."""
     return _politica_certificada(usuario_id, instantanea)
 
+
+# Validar y precargar el recurso local durante el arranque; una ausencia no debe
+# degradar silenciosamente el backend a un clasificador sin lexicón.
+validar_recurso_lexico_clasificacion()
 
 router = APIRouter()
 router.include_router(crear_router(
